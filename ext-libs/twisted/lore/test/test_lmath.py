@@ -6,15 +6,12 @@ Tests for L{twisted.lore.lmath}.
 """
 
 from xml.dom.minidom import Element, Text
-
 from twisted.trial.unittest import TestCase
 from twisted.python.filepath import FilePath
 from twisted.lore.scripts.lore import IProcessor
-
 from twisted.plugin import getPlugins
-
 from twisted.lore.lmath import formulaeToImages
-
+import os
 
 class PluginTests(TestCase):
     """
@@ -30,12 +27,23 @@ class PluginTests(TestCase):
         lmath = [p for p in plugins if p.name == "mlore"]
         self.assertEqual(len(lmath), 1, "Did not find math lore plugin: %r" % (lmath,))
 
-
-
 class FormulaeTests(TestCase):
     """
     Tests for L{formulaeToImages}.
     """
+    def setUp(self):
+        """
+        Create a temporary directory to store the generated image files.
+        """
+        self.temp_dir = FilePath(self.mktemp())
+        self.temp_dir.makedirs()
+
+    def tearDown(self):
+        """
+        Delete the temporary directory after the test.
+        """
+        self.temp_dir.remove()
+
     def test_insertImages(self):
         """
         L{formulaeToImages} replaces any elements with the I{latexformula}
@@ -43,8 +51,7 @@ class FormulaeTests(TestCase):
         based on the latex in the original elements.
         """
         parent = Element('div')
-        base = FilePath(self.mktemp())
-        base.makedirs()
+        base = self.temp_dir
 
         macros = Element('span')
         macros.setAttribute('class', 'latexmacros')
@@ -65,8 +72,11 @@ class FormulaeTests(TestCase):
         # are executed, or perhaps even execute them and make sure an image
         # file is created, but that is a task for another day.
         commands = []
-        formulaeToImages(parent, base.path, _system=commands.append)
-
-        self.assertEqual(
-            parent.toxml(),
-            '<div><span><br/><img src="latexformula0.png"/><br/></span></div>')
+        try:
+            formulaeToImages(parent, base.path, _system=commands.append)
+            self.assertEqual(
+                parent.toxml(),
+                '<div><span><br/><img src="latexformula0.png"/><br/></span></div>')
+        except Exception as e:
+            self.fail(f"Error occurred while generating image: {e}")
+``
