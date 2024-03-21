@@ -5,16 +5,14 @@
 import time
 
 from twisted.internet import reactor, protocol
-
 from twisted.trial import unittest
 from twisted.test.proto_helpers import StringTransport
-
 from twisted.conch import mixin
-
 
 class TestBufferingProto(mixin.BufferingMixin):
     scheduled = False
     rescheduled = 0
+
     def schedule(self):
         self.scheduled = True
         return object()
@@ -22,26 +20,30 @@ class TestBufferingProto(mixin.BufferingMixin):
     def reschedule(self, token):
         self.rescheduled += 1
 
-
-
 class BufferingTest(unittest.TestCase):
-    def testBuffering(self):
-        p = TestBufferingProto()
-        t = p.transport = StringTransport()
+    """
+    Test the buffering behavior of the BufferingMixin.
+    """
 
-        self.failIf(p.scheduled)
+    def setUp(self):
+        self.p = TestBufferingProto()
+        self.t = self.p.transport = StringTransport()
+
+    def tearDown(self):
+        self.t.clear()
+        reactor.stop()
+
+    def testBuffering(self):
+        self.failIf(self.p.scheduled)
 
         L = ['foo', 'bar', 'baz', 'quux']
 
-        p.write('foo')
-        self.failUnless(p.scheduled)
-        self.failIf(p.rescheduled)
+        self.p.write('foo')
+        self.failUnless(self.p.scheduled)
+        self.failIf(self.p.rescheduled)
 
         for s in L:
-            n = p.rescheduled
-            p.write(s)
-            self.assertEqual(p.rescheduled, n + 1)
-            self.assertEqual(t.value(), '')
-
-        p.flush()
-        self.assertEqual(t.value(), 'foo' + ''.join(L))
+            n = self.p.rescheduled
+            self.p.write(s)
+            self.assertEqual(self.p.rescheduled, n + 1)
+            self.assertEqual
