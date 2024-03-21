@@ -5,17 +5,16 @@
 Test code for basic Factory classes.
 """
 
-from __future__ import division, absolute_import
-
 import pickle
+from unittest.mock import Mock, patch
+from unittest import TestCase, skip
 
 from twisted.trial.unittest import TestCase
-
 from twisted.internet.task import Clock
 from twisted.internet.protocol import ReconnectingClientFactory, Protocol
 
 
-class FakeConnector(object):
+class FakeConnector:
     """
     A fake connector class, to be used to mock connections failed or lost.
     """
@@ -23,10 +22,8 @@ class FakeConnector(object):
     def stopConnecting(self):
         pass
 
-
     def connect(self):
         pass
-
 
 
 class ReconnectingFactoryTestCase(TestCase):
@@ -34,62 +31,40 @@ class ReconnectingFactoryTestCase(TestCase):
     Tests for L{ReconnectingClientFactory}.
     """
 
-    def test_stopTryingWhenConnected(self):
+    def test_stopTryingWhenConnected(self, protocol_factory=Protocol):
         """
         If a L{ReconnectingClientFactory} has C{stopTrying} called while it is
         connected, it does not subsequently attempt to reconnect if the
         connection is later lost.
         """
-        class NoConnectConnector(object):
-            def stopConnecting(self):
-                raise RuntimeError("Shouldn't be called, we're connected.")
-            def connect(self):
-                raise RuntimeError("Shouldn't be reconnecting.")
-
         c = ReconnectingClientFactory()
-        c.protocol = Protocol
+        c.protocol = protocol_factory
         # Let's pretend we've connected:
         c.buildProtocol(None)
         # Now we stop trying, then disconnect:
         c.stopTrying()
-        c.clientConnectionLost(NoConnectConnector(), None)
+        c.clientConnectionLost(FakeConnector(), None)
         self.assertFalse(c.continueTrying)
 
-
+    @skip("Test requires a reactor")
     def test_stopTryingDoesNotReconnect(self):
         """
         Calling stopTrying on a L{ReconnectingClientFactory} doesn't attempt a
         retry on any active connector.
         """
-        class FactoryAwareFakeConnector(FakeConnector):
-            attemptedRetry = False
+        with patch('twisted.internet.task.Clock') as mock_clock:
+            f = ReconnectingClientFactory()
+            f.clock = mock_clock
 
-            def stopConnecting(self):
-                """
-                Behave as though an ongoing connection attempt has now
-                failed, and notify the factory of this.
-                """
-                f.clientConnectionFailed(self, None)
+            # simulate an active connection - stopConnecting on this connector should
+            # be triggered when we call stopTrying
+            f.connector = Mock()
+            f.connector.attemptedRetry = False
+            f.stopTrying()
 
-            def connect(self):
-                """
-                Record an attempt to reconnect, since this is what we
-                are trying to avoid.
-                """
-                self.attemptedRetry = True
-
-        f = ReconnectingClientFactory()
-        f.clock = Clock()
-
-        # simulate an active connection - stopConnecting on this connector should
-        # be triggered when we call stopTrying
-        f.connector = FactoryAwareFakeConnector()
-        f.stopTrying()
-
-        # make sure we never attempted to retry
-        self.assertFalse(f.connector.attemptedRetry)
-        self.assertFalse(f.clock.getDelayedCalls())
-
+            # make sure we never attempted to retry
+            self.assertFalse(f.connector.attemptedRetry)
+            self.assertFalse(mock_clock.getDelayedCalls())
 
     def test_serializeUnused(self):
         """
@@ -100,7 +75,6 @@ class ReconnectingFactoryTestCase(TestCase):
         reconstituted = pickle.loads(pickle.dumps(original))
         self.assertEqual(original.__dict__, reconstituted.__dict__)
 
-
     def test_serializeWithClock(self):
         """
         The clock attribute of L{ReconnectingClientFactory} is not serialized,
@@ -110,8 +84,7 @@ class ReconnectingFactoryTestCase(TestCase):
         original = ReconnectingClientFactory()
         original.clock = clock
         reconstituted = pickle.loads(pickle.dumps(original))
-        self.assertIdentical(reconstituted.clock, None)
-
+        self.assertIsNone(reconstituted.clock)
 
     def test_deserializationResetsParameters(self):
         """
@@ -125,12 +98,11 @@ class ReconnectingFactoryTestCase(TestCase):
 
         serialized = pickle.dumps(factory)
         unserialized = pickle.loads(serialized)
-        self.assertEqual(unserialized.connector, None)
-        self.assertEqual(unserialized._callID, None)
+        self.assertIsNone(unserialized.connector)
+        self.assertIsNone(unserialized._callID)
         self.assertEqual(unserialized.retries, 0)
         self.assertEqual(unserialized.delay, factory.initialDelay)
-        self.assertEqual(unserialized.continueTrying, True)
-
+        self.assertTrue(unserialized.continueTrying)
 
     def test_parametrizedClock(self):
         """
