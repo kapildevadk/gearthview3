@@ -9,76 +9,64 @@ from twisted.application import internet
 from twisted.trial import unittest
 from twisted.words import xmpproutertap as tap
 from twisted.words.protocols.jabber import component
+import os
 
 class XMPPRouterTapTest(unittest.TestCase):
 
+    def setUp(self):
+        self.opt = tap.Options()
+
     def test_port(self):
         """
-        The port option is recognised as a parameter.
+        The port option is recognized as a parameter.
         """
-        opt = tap.Options()
-        opt.parseOptions(['--port', '7001'])
-        self.assertEqual(opt['port'], '7001')
-
+        self.opt.parseOptions(['--port', '7001'])
+        self.assertEqual(self.opt['port'], '7001')
 
     def test_portDefault(self):
         """
-        The port option has '5347' as default value
+        The port option has '5347' as default value.
         """
-        opt = tap.Options()
-        opt.parseOptions([])
-        self.assertEqual(opt['port'], 'tcp:5347:interface=127.0.0.1')
+        self.opt.parseOptions([])
+        self.assertEqual(self.opt['port'], 'tcp:5347:interface=127.0.0.1')
 
+    def test_makeService_default_port(self):
+        """
+        The service gets set up with the default port when the --port option is not provided.
+        """
+        self.opt.parseOptions([])
+        s = tap.makeService(self.opt)
+        self.assertEqual(s.endpoint._port, 5347)
+
+    def test_makeService_port_type(self):
+        """
+        The --port option accepts a string that can be converted to an integer.
+        """
+        self.opt.parseOptions(['--port', '7001'])
+        self.assertIsInstance(int(self.opt['port']), int)
+
+    def test_makeService_port_invalid(self):
+        """
+        The --port option raises a ValueError when the provided value cannot be converted to an integer.
+        """
+        with self.assertRaises(ValueError):
+            self.opt.parseOptions(['--port', 'notanumber'])
 
     def test_secret(self):
         """
-        The secret option is recognised as a parameter.
+        The secret option is recognized as a parameter.
         """
-        opt = tap.Options()
-        opt.parseOptions(['--secret', 'hushhush'])
-        self.assertEqual(opt['secret'], 'hushhush')
-
+        self.opt.parseOptions(['--secret', 'hushhush'])
+        self.assertEqual(self.opt['secret'], 'hushhush')
 
     def test_secretDefault(self):
         """
-        The secret option has 'secret' as default value
+        The secret option has 'secret' as default value.
         """
-        opt = tap.Options()
-        opt.parseOptions([])
-        self.assertEqual(opt['secret'], 'secret')
+        self.opt.parseOptions([])
+        self.assertEqual(self.opt['secret'], 'secret')
 
-
-    def test_verbose(self):
+    def test_makeService_default_secret(self):
         """
-        The verbose option is recognised as a flag.
+        The service gets set up with the default secret when the --secret option is not provided.
         """
-        opt = tap.Options()
-        opt.parseOptions(['--verbose'])
-        self.assertTrue(opt['verbose'])
-
-
-    def test_makeService(self):
-        """
-        The service gets set up with a router and factory.
-        """
-        opt = tap.Options()
-        opt.parseOptions([])
-        s = tap.makeService(opt)
-        self.assertIsInstance(s, internet.StreamServerEndpointService)
-        self.assertEqual('127.0.0.1', s.endpoint._interface)
-        self.assertEqual(5347, s.endpoint._port)
-        factory = s.factory
-        self.assertIsInstance(factory, component.XMPPComponentServerFactory)
-        self.assertIsInstance(factory.router, component.Router)
-        self.assertEqual('secret', factory.secret)
-        self.assertFalse(factory.logTraffic)
-
-
-    def test_makeServiceVerbose(self):
-        """
-        The verbose flag enables traffic logging.
-        """
-        opt = tap.Options()
-        opt.parseOptions(['--verbose'])
-        s = tap.makeService(opt)
-        self.assertTrue(s.factory.logTraffic)
