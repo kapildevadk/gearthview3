@@ -6,8 +6,9 @@ Tests for L{twisted.internet._baseprocess} which implements process-related
 functionality that is useful in all platforms supporting L{IReactorProcess}.
 """
 
-__metaclass__ = type
-
+import unittest
+from unittest.mock import Mock, patch
+import warnings
 from twisted.python.deprecate import getWarningMethod, setWarningMethod
 from twisted.trial.unittest import TestCase
 from twisted.internet._baseprocess import BaseProcess
@@ -19,24 +20,18 @@ class BaseProcessTests(TestCase):
     processes which implements functionality common to many different process
     implementations.
     """
+
     def test_callProcessExited(self):
         """
         L{BaseProcess._callProcessExited} calls the C{processExited} method of
         its C{proto} attribute and passes it a L{Failure} wrapping the given
         exception.
         """
-        class FakeProto:
-            reason = None
-
-            def processExited(self, reason):
-                self.reason = reason
-
+        proto = Mock()
+        process = BaseProcess(proto)
         reason = RuntimeError("fake reason")
-        process = BaseProcess(FakeProto())
         process._callProcessExited(reason)
-        process.proto.reason.trap(RuntimeError)
-        self.assertIdentical(reason, process.proto.reason.value)
-
+        proto.processExited.assert_called_once_with(unittest.expectedFailure(reason))
 
     def test_callProcessExitedMissing(self):
         """
@@ -44,30 +39,16 @@ class BaseProcessTests(TestCase):
         object referred to by its C{proto} attribute has no C{processExited}
         method.
         """
-        class FakeProto:
-            pass
+        proto = Mock()
+        process = BaseProcess(proto)
 
-        reason = object()
-        process = BaseProcess(FakeProto())
+        with patch('twisted.python.deprecate.getWarningMethod') as getWarningMethodMock:
+            getWarningMethodMock.return_value = lambda message: None
+            with self.assertWarns(DeprecationWarning):
+                process._callProcessExited(RuntimeError("fake reason"))
 
-        self.addCleanup(setWarningMethod, getWarningMethod())
-        warnings = []
-        def collect(message, category, stacklevel):
-            warnings.append((message, category, stacklevel))
-        setWarningMethod(collect)
-
-        process._callProcessExited(reason)
-
-        [(message, category, stacklevel)] = warnings
-        self.assertEqual(
-            message,
-            "Since Twisted 8.2, IProcessProtocol.processExited is required.  "
-            "%s.%s must implement it." % (
-                FakeProto.__module__, FakeProto.__name__))
-        self.assertIdentical(category, DeprecationWarning)
-        # The stacklevel doesn't really make sense for this kind of
-        # deprecation.  Requiring it to be 0 will at least avoid pointing to
-        # any part of Twisted or a random part of the application's code, which
-        # I think would be more misleading than having it point inside the
-        # warning system itself. -exarkun
-        self.assertEqual(stacklevel, 0)
+            getWarningMethodMock.assert_called_once_with()
+            getWarningMethodMock.return_value.assert_called_once_with(
+                "Since Twisted 8.2, IProcessProtocol.processExited is required.  "
+                "%s.%s must implement it." % (
+                    proto.__module__, proto.__name__))
