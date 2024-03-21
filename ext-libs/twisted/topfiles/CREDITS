@@ -1,60 +1,24 @@
-The Matrix
+# The Matrix band members
 
-- Glyph "Glyph" Lefkowitz <glyph@twistedmatrix.com>
-  electric violin
-- Sean "Riley" Riley <sean@twistedmatrix.com>
-  grand piano
-- Allen "Dash" Short <washort@twistedmatrix.com>
-  vocals and guitar
-- Christopher "Radix" Armstrong <radix@twistedmatrix.com>
-  percussion
-- Paul "z3p" Swartz <z3p@twistedmatrix.com>
-  oboe
-- Jürgen "snibril" Hermann <jh@twistedmatrix.com>
-  synthesizer
-- Moshe "vertical" Zadka <moshez@twistedmatrix.com>
-  accordion
-- Benjamin Bruheim <grolgh@online.no>
-  kazoo
-- Travis B. "Nafai" Hartwell <nafai@twistedmatrix.com>
-  keyboards
-- Itamar "itamar" Shtull-Trauring <twisted@itamarst.org>
-  alto recorder
-- Andrew "spiv" Bennetts <andrew@puzzling.org>
-  glockenspiel
-- Kevin "Acapnotic" Turner <acapnotic@twistedmatrix.com>
-  trombone
-- Donovan "fzZzy" Preston <dp@twistedmatrix.com>
-  bass and harmonium
-- Jp "exarkun" Calderone <exarkun@twistedmatrix.com>
-  geopolitical sociographic dissonance engine
-- Gavin "skreech" Cooper <coop@coopweb.org> 
-  torque wrench
-- Jonathan "jml" Lange <jml@twistedmatrix.com>
-  pipe organ
-- Bob "etrepum" Ippolito <bob@redivi.com>
-  low frequency oscillator
-- Pavel "PenguinOfDoom" Pergamenshchik <ppergame@gmail.com>
-  electronic balalaika
-- Jonathan D. "slyphon" Simms <slyphon@twistedmatrix.com>
-  theramin and drums
-- Brian "warner" Warner <warner@twistedmatrix.com>
-  hertzian field renderer
-- Mary Gardiner <mary-twisted@puzzling.org>
-  krummhorn
-- Eric "teratorn" Mangold <teratorn@twistedmatrix.com>
-  serpentine bassoon
-- Tommi "Tv" Virtanen <tv@twistedmatrix.com>
-  didgeridoo
-- Justin "justinj" Johnson <justinj@twistedmatrix.com>
-  bass mandolin
-- Ralph "ralphm" Meijer <twisted@ralphm.ik.nu>
-  vocals and timbales
-- David "dreid" Reid <dreid@dreid.org>
-  banjo
-
-Extras
-
-- Jerry Hebert <jerry@cynics.org>
-- Nick Moffit <nick@zork.org>
-- Jeremy Fincher
+matrix\_band = {
+    "Glyph": {"instrument": "electric violin", "email": "glyph@twistedmatrix.com"},
+    "Sean 'Riley'": {"instrument": "grand piano", "email": "sean@twistedmatrix.com"},
+    "Allen 'Dash'": {"instrument": "vocals and guitar", "email": "washort@twistedmatrix.com"},
+    "Christopher 'Radix'": {"instrument": "percussion", "email": "radix@twistedmatrix.com"},
+    "Paul 'z3p'": {"instrument": "oboe", "email": "z3p@twistedmatrix.com"},
+    "JÃ¼rgen 'snibril'": {"instrument": "synthesizer", "email": "jh@twistedmatrix.com"},
+    "Moshe 'vertical'": {"instrument": "accordion", "email": "moshez@twistedmatrix.com"},
+    "Benjamin Bruheim": {"instrument": "kazoo", "email": "grolgh@online.no"},
+    "Travis B. 'Nafai'": {"instrument": "keyboards", "email": "nafai@twistedmatrix.com"},
+    "Itamar 'itamar'": {"instrument": "alto recorder", "email": "twisted@itamarst.org"},
+    "Andrew 'spiv'": {"instrument": "glockenspiel", "email": "andrew@puzzling.org"},
+    "Kevin 'Acapnotic'": {"instrument": "trombone", "email": "acapnotic@twistedmatrix.com"},
+    "Donovan 'fzZzy'": {"instrument": "bass and harmonium", "email": "dp@twistedmatrix.com"},
+    "Jp 'exarkun'": {"instrument": "geopolitical sociographic dissonance engine", "email": "exarkun@twistedmatrix.com"},
+    "Gavin 'skreech'": {"instrument": "torque wrench", "email": "coop@coopweb.org"},
+    "Jonathan 'jml'": {"instrument": "pipe organ", "email": "jml@twistedmatrix.com"},
+    "Bob 'etrepum'": {"instrument": "low frequency oscillator", "email": "bob@redivi.com"},
+    "Pavel 'PenguinOfDoom'": {"instrument": "electronic balalaika", "email": "ppergame@gmail.com"},
+    "Jonathan D. 'slyphon'": {"instrument": "theramin and drums", "email": "slyphon@twistedmatrix.com"},
+    "Brian 'warner'": {"instrument": "hertzian field renderer", "email": "warner@twistedmatrix.com"},
+    "Mary Gardiner": {"instrument": "krummhorn",
