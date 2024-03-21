@@ -1,104 +1,114 @@
 # Copyright (c) Twisted Matrix Laboratories.
 # See LICENSE for details.
 
-import inspect, glob
-from os import path
-
+import inspect
+import glob
+import pathlib
+import atexit
+from types import ModuleType
+from unittest import TestCase, skip
 from twisted.trial import unittest
 from twisted.python import reflect
 from twisted.python.modules import getModule
+import importlib
 
 
-
-def errorInFile(f, line=17, name=''):
+def error_in_file(f: str, line: int = 17, name: str = '') -> str:
     """
     Return a filename formatted so emacs will recognize it as an error point
 
     @param line: Line number in file.  Defaults to 17 because that's about how
         long the copyright headers are.
     """
-    return '%s:%d:%s' % (f, line, name)
-    # return 'File "%s", line %d, in %s' % (f, line, name)
+    return f"{f}:{line}:{name}"
 
 
-class DocCoverage(unittest.TestCase):
+class DocCoverage(TestCase):
     """
     Looking for docstrings in all modules and packages.
     """
-    def setUp(self):
-        self.packageNames = []
+
+    def setUp(self) -> None:
+        self.package_names: list[str] = []
         for mod in getModule('twisted').walkModules():
             if mod.isPackage():
-                self.packageNames.append(mod.name)
+                self.package_names.append(mod.name)
 
-
-    def testModules(self):
+    def test_modules(self) -> None:
         """
         Looking for docstrings in all modules.
         """
-        docless = []
-        for packageName in self.packageNames:
-            if packageName in ('twisted.test',):
-                # because some stuff in here behaves oddly when imported
+        docless: list[str] = []
+        for package_name in self.package_names:
+            if package_name in ('twisted.test',):
                 continue
             try:
-                package = reflect.namedModule(packageName)
-            except ImportError, e:
+                package: ModuleType = reflect.namedModule(package_name)
+            except ImportError as e:
                 # This is testing doc coverage, not importability.
-                # (Really, I don't want to deal with the fact that I don't
-                #  have pyserial installed.)
-                # print e
                 pass
             else:
-                docless.extend(self.modulesInPackage(packageName, package))
-        self.failIf(docless, "No docstrings in module files:\n"
-                    "%s" % ('\n'.join(map(errorInFile, docless)),))
+                docless.extend(self.modules_in_package(package_name, package))
+        self.failIf(docless, f"No docstrings in module files:\n{('\n'.join(map(error_in_file, docless)),))}")
 
-
-    def modulesInPackage(self, packageName, package):
-        docless = []
-        directory = path.dirname(package.__file__)
-        for modfile in glob.glob(path.join(directory, '*.py')):
-            moduleName = inspect.getmodulename(modfile)
-            if moduleName == '__init__':
-                # These are tested by test_packages.
+    def modules_in_package(self, package_name: str, package: ModuleType) -> list[str]:
+        docless: list[str] = []
+        directory: pathlib.Path = pathlib.Path(package.__file__).parent
+        for modfile in glob.glob(directory / f"*.py"):
+            module_name: str = inspect.getmodulename(str(modfile))
+            if module_name == '__init__':
                 continue
-            elif moduleName in ('spelunk_gnome','gtkmanhole'):
-                # argh special case pygtk evil argh.  How does epydoc deal
-                # with this?
+            if module_name in ('spelunk_gnome', 'gtkmanhole'):
                 continue
             try:
-                module = reflect.namedModule('.'.join([packageName,
-                                                       moduleName]))
-            except Exception, e:
-                # print moduleName, "misbehaved:", e
+                module: ModuleType = importlib.import_module(f"{package_name}.{module_name}")
+            except Exception as e:
                 pass
             else:
                 if not inspect.getdoc(module):
-                    docless.append(modfile)
+                    docless.append(str(modfile))
         return docless
 
-
-    def testPackages(self):
+    def test_packages(self) -> None:
         """
         Looking for docstrings in all packages.
         """
-        docless = []
-        for packageName in self.packageNames:
+        docless: list[str] = []
+        for package_name in self.package_names:
             try:
-                package = reflect.namedModule(packageName)
-            except Exception, e:
-                # This is testing doc coverage, not importability.
-                # (Really, I don't want to deal with the fact that I don't
-                #  have pyserial installed.)
-                # print e
+                package: ModuleType = reflect.namedModule(package_name)
+            except Exception as e:
                 pass
             else:
                 if not inspect.getdoc(package):
-                    docless.append(package.__file__.replace('.pyc','.py'))
-        self.failIf(docless, "No docstrings for package files\n"
-                    "%s" % ('\n'.join(map(errorInFile, docless),)))
+                    docless.append(package.__file__.replace('.pyc', '.py'))
+        self.failIf(docless, f"No docstrings for package files\n{('\n'.join(map(error_in_file, docless)),))}")
 
-
-    # This test takes a while and doesn't come close to passing.  :(
     testModules.skip = "Activate me when you feel like writing docstrings, and fixing GTK crashing bugs."
+
+def print_docless_on_exit() -> None:
+    docless = []
+    for test_case in unittest.TestLoader().loadTestsFromTestCase(DocCoverage):
+        result = unittest.TextTestRunner(verbosity=0).run(test_case)
+        docless.extend(modfile for _, modfile in result.errors)
+    if docless:
+        print(f"The following files have no docstrings:\n{('\n'.join(map(error_in_file, docless)),))}")
+
+if __name__ == "__main__":
+    atexit.register(print_docless_on_exit)
+    unittest.main()
+
+
+[tool.poetry]
+name = "doc-coverage"
+version = "0.1.0"
+description = "A package for checking docstrings in Twisted modules and packages."
+authors = ["Twisted Matrix Laboratories"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+twisted = "^22.2.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
