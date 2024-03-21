@@ -8,31 +8,26 @@ them.
 """
 
 from zope.interface import Interface, Attribute, implements
-
+from typing import List, Any, TypeVar, Optional
 from twisted.plugin import IPlugin, getPlugins
 from twisted.python.reflect import namedAny
+from twisted.python.util import sibling
+
+
+T = TypeVar('T')
 
 
 class IReactorInstaller(Interface):
     """
     Definition of a reactor which can probably be installed.
     """
-    shortName = Attribute("""
-    A brief string giving the user-facing name of this reactor.
-    """)
+    shortName: str
+    description: str
 
-    description = Attribute("""
-    A longer string giving a user-facing description of this reactor.
-    """)
-
-    def install():
+    def install(self) -> None:
         """
         Install this reactor.
         """
-
-    # TODO - A method which provides a best-guess as to whether this reactor
-    # can actually be used in the execution environment.
-
 
 
 class NoSuchReactor(KeyError):
@@ -48,27 +43,27 @@ class Reactor(object):
     """
     implements(IPlugin, IReactorInstaller)
 
-
-    def __init__(self, shortName, moduleName, description):
+    def __init__(self, shortName: str, moduleName: str, description: str):
         self.shortName = shortName
         self.moduleName = moduleName
         self.description = description
 
+    def install(self) -> None:
+        try:
+            reactorModule = sibling(self.moduleName)
+            namedAny(reactorModule).install()
+        except Exception as e:
+            raise Exception(f"Failed to install reactor {self.shortName}: {e}")
 
-    def install(self):
-        namedAny(self.moduleName).install()
 
-
-
-def getReactorTypes():
+def getReactorTypes() -> List[IReactorInstaller]:
     """
     Return an iterator of L{IReactorInstaller} plugins.
     """
     return getPlugins(IReactorInstaller)
 
 
-
-def installReactor(shortName):
+def installReactor(shortName: str) -> None:
     """
     Install the reactor with the given C{shortName} attribute.
 
@@ -78,6 +73,15 @@ def installReactor(shortName):
     """
     for installer in getReactorTypes():
         if installer.shortName == shortName:
-            return installer.install()
+            try:
+                installer.install()
+                return
+            except Exception as e:
+                raise Exception(f"Failed to install reactor {shortName}: {e}")
     raise NoSuchReactor(shortName)
 
+
+__all__ = [
+    'IReactorInstaller', 'NoSuchReactor', 'Reactor', 'getReactorTypes',
+    'installReactor'
+]
