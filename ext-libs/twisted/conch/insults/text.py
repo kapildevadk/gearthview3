@@ -18,8 +18,8 @@ Character attributes are specified by using two Python operations:
 attribute lookup and indexing.  For example, the string \"Hello
 world\" with red foreground and all other attributes set to their
 defaults, assuming the name twisted.conch.insults.text.attributes has
-been imported and bound to the name \"A\" (with the statement C{from
-twisted.conch.insults.text import attributes as A}, for example) one
+been imported and bound to the name \"A\" (with the statement
+C{from twisted.conch.insults.text import attributes as A}, for example) one
 uses this expression::
 
  | A.fg.red[\"Hello world\"]
@@ -52,135 +52,101 @@ caused it to be on.  For example::
 @author: Jp Calderone
 """
 
-from twisted.conch.insults import helper, insults
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-class _Attribute(object):
+import twisted.conch.insults.helper as helper
+import twisted.conch.insults.insults as insults
+
+
+class _Attribute:
     def __init__(self):
         self.children = []
 
-    def __getitem__(self, item):
-        assert isinstance(item, (list, tuple, _Attribute, str))
-        if isinstance(item, (list, tuple)):
-            self.children.extend(item)
-        else:
+    def __getitem__(self, item: Union[str, "Attribute"]) -> "_Attribute":
+        if isinstance(item, str):
             self.children.append(item)
+        elif isinstance(item, Attribute):
+            self.children.extend(item.children)
+        else:
+            raise TypeError("item must be a string or Attribute")
         return self
 
-    def serialize(self, write, attrs=None):
-        if attrs is None:
-            attrs = helper.CharacterAttribute()
+    def __call__(self, attrs: "CharacterAttribute") -> None:
         for ch in self.children:
-            if isinstance(ch, _Attribute):
-                ch.serialize(write, attrs.copy())
+            if isinstance(ch, Attribute):
+                ch(attrs.copy())
             else:
-                write(attrs.toVT102())
-                write(ch)
+                attrs.to_string(ch)
 
-class _NormalAttr(_Attribute):
-    def serialize(self, write, attrs):
-        attrs.__init__()
-        super(_NormalAttr, self).serialize(write, attrs)
-
-class _OtherAttr(_Attribute):
-    def __init__(self, attrname, attrvalue):
-        self.attrname = attrname
-        self.attrvalue = attrvalue
-        self.children = []
-
-    def __neg__(self):
-        result = _OtherAttr(self.attrname, not self.attrvalue)
+    def __neg__(self) -> "Attribute":
+        result = _OtherAttr("", False)
         result.children.extend(self.children)
         return result
 
-    def serialize(self, write, attrs):
+    def __repr__(self) -> str:
+        return f"Attribute({self.children!r})"
+
+
+class _NormalAttr(_Attribute):
+    def __call__(self, attrs: "CharacterAttribute") -> None:
+        attrs.__init__()
+        super().__call__(attrs)
+
+
+class _OtherAttr(_Attribute):
+    def __init__(self, attrname: str, attrvalue: bool):
+        self.attrname = attrname
+        self.attrvalue = attrvalue
+
+    def __call__(self, attrs: "CharacterAttribute") -> None:
         attrs = attrs.wantOne(**{self.attrname: self.attrvalue})
-        super(_OtherAttr, self).serialize(write, attrs)
+        super().__call__(attrs)
+
 
 class _ColorAttr(_Attribute):
-    def __init__(self, color, ground):
+    def __init__(self, color: str, ground: str):
         self.color = color
         self.ground = ground
-        self.children = []
 
-    def serialize(self, write, attrs):
+    def __call__(self, attrs: "CharacterAttribute") -> None:
         attrs = attrs.wantOne(**{self.ground: self.color})
-        super(_ColorAttr, self).serialize(write, attrs)
+        super().__call__(attrs)
+
 
 class _ForegroundColorAttr(_ColorAttr):
-    def __init__(self, color):
-        super(_ForegroundColorAttr, self).__init__(color, 'foreground')
+    def __call__(self, attrs: "CharacterAttribute") -> None:
+        super().__call__(attrs)
+
 
 class _BackgroundColorAttr(_ColorAttr):
-    def __init__(self, color):
-        super(_BackgroundColorAttr, self).__init__(color, 'background')
+    def __call__(self, attrs: "CharacterAttribute") -> None:
+        super().__call__(attrs)
 
-class CharacterAttributes(object):
-    class _ColorAttribute(object):
-        def __init__(self, ground):
+
+class CharacterAttribute:
+    def __init__(self):
+        self.reset()
+
+    def reset(self) -> None:
+        self._attributes = helper.CharacterAttribute()
+
+    def to_string(self, char: str) -> None:
+        self._attributes.toVT102()
+        print(char, end="")
+
+    def copy(self) -> "CharacterAttribute":
+        attrs = CharacterAttribute()
+        attrs._attributes = self._attributes.copy()
+        return attrs
+
+    def wantOne(self, **kwargs: Any) -> "CharacterAttribute":
+        attrs = CharacterAttribute()
+        attrs._attributes = self._attributes.wantOne(**kwargs)
+        return attrs
+
+
+class Attribute:
+    class _ColorAttribute:
+        def __init__(self, ground: str):
             self.ground = ground
 
-        attrs = {
-            'black': helper.BLACK,
-            'red': helper.RED,
-            'green': helper.GREEN,
-            'yellow': helper.YELLOW,
-            'blue': helper.BLUE,
-            'magenta': helper.MAGENTA,
-            'cyan': helper.CYAN,
-            'white': helper.WHITE}
-
-        def __getattr__(self, name):
-            try:
-                return self.ground(self.attrs[name])
-            except KeyError:
-                raise AttributeError(name)
-
-    fg = _ColorAttribute(_ForegroundColorAttr)
-    bg = _ColorAttribute(_BackgroundColorAttr)
-
-    attrs = {
-        'bold': insults.BOLD,
-        'blink': insults.BLINK,
-        'underline': insults.UNDERLINE,
-        'reverseVideo': insults.REVERSE_VIDEO}
-
-    def __getattr__(self, name):
-        if name == 'normal':
-            return _NormalAttr()
-        if name in self.attrs:
-            return _OtherAttr(name, True)
-        raise AttributeError(name)
-
-def flatten(output, attrs):
-    """Serialize a sequence of characters with attribute information
-
-    The resulting string can be interpreted by VT102-compatible
-    terminals so that the contained characters are displayed and, for
-    those attributes which the terminal supports, have the attributes
-    specified in the input.
-
-    For example, if your terminal is VT102 compatible, you might run
-    this for a colorful variation on the \"hello world\" theme::
-
-     | from twisted.conch.insults.text import flatten, attributes as A
-     | from twisted.conch.insults.helper import CharacterAttribute
-     | print flatten(
-     |     A.normal[A.bold[A.fg.red['He'], A.fg.green['ll'], A.fg.magenta['o'], ' ',
-     |                     A.fg.yellow['Wo'], A.fg.blue['rl'], A.fg.cyan['d!']]],
-     |     CharacterAttribute())
-
-    @param output: Object returned by accessing attributes of the
-    module-level attributes object.
-
-    @param attrs: A L{twisted.conch.insults.helper.CharacterAttribute}
-    instance
-
-    @return: A VT102-friendly string
-    """
-    L = []
-    output.serialize(L.append, attrs)
-    return ''.join(L)
-
-attributes = CharacterAttributes()
-
-__all__ = ['attributes', 'flatten']
