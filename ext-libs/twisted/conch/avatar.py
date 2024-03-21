@@ -4,34 +4,25 @@ from error import ConchError
 from ssh.connection import OPEN_UNKNOWN_CHANNEL_TYPE
 from twisted.python import log
 from zope import interface
+from typing import Any, Dict, Optional
 
 class ConchUser:
+    """Implements the IConchUser interface for Twisted Conch SSH connections."""
+
     interface.implements(IConchUser)
 
     def __init__(self):
-        self.channelLookup = {}
-        self.subsystemLookup = {}
+        self.channel_lookup: Dict[str, type] = {}
+        self.subsystem_lookup: Dict[str, type] = {}
 
-    def lookupChannel(self, channelType, windowSize, maxPacket, data):
-        klass = self.channelLookup.get(channelType, None)
-        if not klass:
-            raise ConchError(OPEN_UNKNOWN_CHANNEL_TYPE, "unknown channel")
-        else:
-            return klass(remoteWindow = windowSize, 
-                         remoteMaxPacket = maxPacket, 
-                         data=data, avatar=self)
+    def lookup_channel(self, channel_type: str, window_size: int, max_packet: int, data: Any) -> Any:
+        """Look up and instantiate a channel class based on the given channel type."""
+        ChannelClass = self.channel_lookup.get(channel_type, None)
+        if not ChannelClass:
+            raise ConchError(OPEN_UNKNOWN_CHANNEL_TYPE, f"Unknown channel type: {channel_type}")
+        return ChannelClass(remote_window=window_size, remote_max_packet=max_packet, data=data, avatar=self)
 
-    def lookupSubsystem(self, subsystem, data):
-        log.msg(repr(self.subsystemLookup))
-        klass = self.subsystemLookup.get(subsystem, None)
-        if not klass:
-            return False
-        return klass(data, avatar=self)
-
-    def gotGlobalRequest(self, requestType, data):
-        # XXX should this use method dispatch?
-        requestType = requestType.replace('-','_')
-        f = getattr(self, "global_%s" % requestType, None)
-        if not f:
-            return 0
-        return f(data)
+    def lookup_subsystem(self, subsystem: str, data: Any) -> Optional[Any]:
+        """Look up and instantiate a subsystem class based on the given subsystem name."""
+        log.msg(f"Subsystem lookup: {self.subsystem_lookup}")
+        SubsystemClass = self.subsystem_lookup.get(subsystem, None)
