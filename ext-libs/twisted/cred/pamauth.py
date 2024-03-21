@@ -5,75 +5,70 @@
 Support for asynchronously authenticating using PAM.
 """
 
-
 import PAM
+import getpass
+import os
+import sys
+import threading
+import contextlib
+import contextvars
+import typing
+from typing import List, Tuple, Dict, Any, Callable, Optional, Deferred
+import traceback
+import defer
+import raw_input
+import select
+import signal
 
-import getpass, threading, os
 
-from twisted.internet import threads, defer
-
-def pamAuthenticateThread(service, user, conv):
-    def _conv(items):
-        from twisted.internet import reactor
-        try:
-            d = conv(items)
-        except:
-            import traceback
-            traceback.print_exc()
-            return
-        ev = threading.Event()
-        def cb(r):
-            ev.r = (1, r)
-            ev.set()
-        def eb(e):
-            ev.r = (0, e)
-            ev.set()
-        reactor.callFromThread(d.addCallbacks, cb, eb)
-        ev.wait()
-        done = ev.r
-        if done[0]:
-            return done[1]
-        else:
-            raise done[1].type, done[1].value
-
-    return callIntoPAM(service, user, _conv)
-
-def callIntoPAM(service, user, conv):
-    """A testing hook.
+def pamAuthenticateThread(
+    service: str, user: str, conv: Callable[[List[Tuple[str, int]]], Deferred[List[Tuple[str, int]]]]
+) -> Deferred[int]:
     """
-    pam = PAM.pam()
-    pam.start(service)
-    pam.set_item(PAM.PAM_USER, user)
-    pam.set_item(PAM.PAM_CONV, conv)
-    gid = os.getegid()
-    uid = os.geteuid()
-    os.setegid(0)
-    os.seteuid(0)
-    try:
-        pam.authenticate() # these will raise
-        pam.acct_mgmt()
-        return 1
-    finally:
-        os.setegid(gid)
-        os.seteuid(uid)
+    Authenticate using PAM in a separate thread.
 
-def defConv(items):
-    resp = []
-    for i in range(len(items)):
-        message, kind = items[i]
-        if kind == 1: # password
-            p = getpass.getpass(message)
-            resp.append((p, 0))
-        elif kind == 2: # text
-            p = raw_input(message)
-            resp.append((p, 0))
-        elif kind in (3,4):
-            print message
-            resp.append(("", 0))
-        else:
-            return defer.fail('foo')
-    d = defer.succeed(resp)
-    return d
+    :param service: The PAM service name.
+    :param user: The user name.
+    :param conv: The conversation function.
+    :return: A Deferred that fires with the result of the PAM authentication.
+    """
 
-def pamAuthenticate(service, user, conv):
-    return threads.deferToThread(pamAuthenticateThread, service, user, conv)
+    def _conv(items: List[Tuple[str, int]]) -> Deferred[List[Tuple[str, int]]]:
+        gid = _gid.get()
+        uid = _uid.get()
+
+        def _cb(result: List[Tuple[str, int]]) -> None:
+            nonlocal gid, uid
+            with suppress(KeyboardInterrupt):
+                with contextlib.suppress(SystemExit):
+                    conv(items).addCallback(_cb).addErrback(_eb)
+
+        def _eb(failure: Optional[BaseException]) -> None:
+            nonlocal gid, uid
+            if failure is not None:
+                traceback.print_exc()
+            with suppress(KeyboardInterrupt):
+                with contextlib.suppress(SystemExit):
+                    conv(items).addCallback(_cb).addErrback(_eb)
+
+        d = defer.Deferred()
+        reactor.callFromThread(d.addCallbacks, _cb, _eb)
+        event = threading.Event()
+        event.wait()
+        return d
+
+    _gid = contextvars.ContextVar("gid")
+    _uid = contextvars.ContextVar("uid")
+
+    with suppress(KeyboardInterrupt):
+        with contextlib.suppress(SystemExit):
+            _gid.set(os.getegid())
+            _uid.set(os.geteuid())
+
+            try:
+                with suppress(KeyboardInterrupt):
+                    with contextlib.suppress(SystemExit):
+                        pam = PAM.pam()
+                        pam.start(service)
+                        pam.set_item(PAM.PAM_USER, user)
+                        pam.set_item(PAM.PAM
