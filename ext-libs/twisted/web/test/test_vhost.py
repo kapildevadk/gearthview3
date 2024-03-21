@@ -1,105 +1,103 @@
-# Copyright (c) Twisted Matrix Laboratories.
-# See LICENSE for details.
+import asyncio
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Optional
 
-"""
-Tests for L{twisted.web.vhost}.
-"""
-
-from twisted.internet.defer import gatherResults
-from twisted.trial.unittest import TestCase
+import pytest
+from twisted.test.requesthelp import DummyRequest
 from twisted.web.http import NOT_FOUND
-from twisted.web.static import Data
+from twisted.web.resource import Resource
 from twisted.web.vhost import NameVirtualHost
-from twisted.web.test.test_web import DummyRequest
-from twisted.web.test._util import _render
 
-class NameVirtualHostTests(TestCase):
-    """
-    Tests for L{NameVirtualHost}.
-    """
-    def test_renderWithoutHost(self):
+class TestNameVirtualHost(pytest.TestCase):
+    """Tests for NameVirtualHost."""
+
+    async def test_render_without_host(self) -> None:
         """
-        L{NameVirtualHost.render} returns the result of rendering the
-        instance's C{default} if it is not C{None} and there is no I{Host}
+        NameVirtualHost.render returns the result of rendering the
+        instance's default if it is not None and there is no Host header
+        in the request.
+        """
+        virtual_host_resource = NameVirtualHost()
+        virtual_host_resource.default = Resource()
+        virtual_host_resource.default.render = lambda request: b"correct result"  # type: ignore
+        request = DummyRequest(b"")
+
+        response = await virtual_host_resource.render(request)
+
+        self.assertEqual(response, b"correct result")
+
+    async def test_render_without_host_no_default(self) -> None:
+        """
+        NameVirtualHost.render returns a response with a status of NOT
+        FOUND if the instance's default is None and there is no Host
         header in the request.
         """
-        virtualHostResource = NameVirtualHost()
-        virtualHostResource.default = Data("correct result", "")
-        request = DummyRequest([''])
-        self.assertEqual(
-            virtualHostResource.render(request), "correct result")
+        virtual_host_resource = NameVirtualHost()
+        request = DummyRequest(b"")
 
+        with self.assertRaises(NOT_FOUND):
+            await virtual_host_resource.render(request)
 
-    def test_renderWithoutHostNoDefault(self):
+    async def test_render_with_host(self) -> None:
         """
-        L{NameVirtualHost.render} returns a response with a status of I{NOT
-        FOUND} if the instance's C{default} is C{None} and there is no I{Host}
-        header in the request.
+        NameVirtualHost.render returns the result of rendering the resource
+        which is the value in the instance's host dictionary corresponding
+        to the key indicated by the value of the Host header in the request.
         """
-        virtualHostResource = NameVirtualHost()
-        request = DummyRequest([''])
-        d = _render(virtualHostResource, request)
-        def cbRendered(ignored):
-            self.assertEqual(request.responseCode, NOT_FOUND)
-        d.addCallback(cbRendered)
-        return d
+        virtual_host_resource = NameVirtualHost()
+        virtual_host_resource.host = {b"example.org": Resource()}
+        virtual_host_resource.host[b"example.org"].render = lambda request: b"winner"  # type: ignore
 
+        request = DummyRequest(b"")
+        request.headers[b"host"] = b"example.org"
 
-    def test_renderWithHost(self):
+        response = await virtual_host_resource.render(request)
+
+        self.assertEqual(response, b"winner")
+
+    async def test_render_with_host_port(self) -> None:
         """
-        L{NameVirtualHost.render} returns the result of rendering the resource
-        which is the value in the instance's C{host} dictionary corresponding
-        to the key indicated by the value of the I{Host} header in the request.
+        The port portion of the Host header should not be considered.
         """
-        virtualHostResource = NameVirtualHost()
-        virtualHostResource.addHost('example.org', Data("winner", ""))
+        virtual_host_resource = NameVirtualHost()
+        virtual_host_resource.host = {b"example.org": Resource()}
+        virtual_host_resource.host[b"example.org"].render = lambda request: b"winner"  # type: ignore
 
-        request = DummyRequest([''])
-        request.headers['host'] = 'example.org'
-        d = _render(virtualHostResource, request)
-        def cbRendered(ignored, request):
-            self.assertEqual(''.join(request.written), "winner")
-        d.addCallback(cbRendered, request)
+        request = DummyRequest(b"")
+        request.headers[b"host"] = b"example.org:8000"
 
-        # The port portion of the Host header should not be considered.
-        requestWithPort = DummyRequest([''])
-        requestWithPort.headers['host'] = 'example.org:8000'
-        dWithPort = _render(virtualHostResource, requestWithPort)
-        def cbRendered(ignored, requestWithPort):
-            self.assertEqual(''.join(requestWithPort.written), "winner")
-        dWithPort.addCallback(cbRendered, requestWithPort)
+        response = await virtual_host_resource.render(request)
 
-        return gatherResults([d, dWithPort])
+        self.assertEqual(response, b"winner")
 
-
-    def test_renderWithUnknownHost(self):
+    async def test_render_with_unknown_host(self) -> None:
         """
-        L{NameVirtualHost.render} returns the result of rendering the
-        instance's C{default} if it is not C{None} and there is no host
-        matching the value of the I{Host} header in the request.
+        NameVirtualHost.render returns the result of rendering the
+        instance's default if it is not None and there is no host
+        matching the value of the Host header in the request.
         """
-        virtualHostResource = NameVirtualHost()
-        virtualHostResource.default = Data("correct data", "")
-        request = DummyRequest([''])
-        request.headers['host'] = 'example.com'
-        d = _render(virtualHostResource, request)
-        def cbRendered(ignored):
-            self.assertEqual(''.join(request.written), "correct data")
-        d.addCallback(cbRendered)
-        return d
+        virtual_host_resource = NameVirtualHost()
+        virtual_host_resource.default = Resource()
+        virtual_host_resource.default.render = lambda request: b"correct data"  # type: ignore
+        request = DummyRequest(b"")
+        request.headers[b"host"] = b"example.com"
 
+        response = await virtual_host_resource.render(request)
 
-    def test_renderWithUnknownHostNoDefault(self):
+        self.assertEqual(response, b"correct data")
+
+    async def test_render_with_unknown_host_no_default(self) -> None:
         """
-        L{NameVirtualHost.render} returns a response with a status of I{NOT
-        FOUND} if the instance's C{default} is C{None} and there is no host
-        matching the value of the I{Host} header in the request.
+        NameVirtualHost.render returns a response with a status of NOT
+        FOUND if the instance's default is None and there is no host
+        matching the value of the Host header in the request.
         """
-        virtualHostResource = NameVirtualHost()
-        request = DummyRequest([''])
-        request.headers['host'] = 'example.com'
-        d = _render(virtualHostResource, request)
-        def cbRendered(ignored):
-            self.assertEqual(request.responseCode, NOT_FOUND)
-        d.addCallback(cbRendered)
-        return d
+        virtual_host_resource = NameVirtualHost()
+        request = DummyRequest(b"")
+        request.headers[b"host"] = b"example.com"
+
+        with self.assertRaises(NOT_FOUND):
+            await virtual_host_resource.render(request)
+
