@@ -8,41 +8,52 @@ are ssh-userauth and ssh-connection.
 Maintainer: Paul Swartz
 """
 
+import typing
 
 from twisted.python import log
+from twisted.python.util import getAttribute
 
 class SSHService(log.Logger):
-    name = None # this is the ssh name for the service
-    protocolMessages = {} # these map #'s -> protocol names
-    transport = None # gets set later
+    """
+    The parent class for all the SSH services.
+    """
 
-    def serviceStarted(self):
-        """
-        called when the service is active on the transport.
-        """
+    name: str
+    transport: typing.Any
 
-    def serviceStopped(self):
+    def __init__(self, name: str):
+        self.name = name
+
+    @classmethod
+    def getProtocolMessageName(cls, message_num: int) -> str:
         """
-        called when the service is stopped, either by the connection ending
+        Get the protocol message name for the given message number.
+        """
+        if message_num in cls.protocolMessages:
+            return cls.protocolMessages[message_num]
+        return f"Unknown-{message_num}"
+
+    def serviceStarted(self) -> None:
+        """
+        Called when the service is active on the transport.
+        """
+        pass
+
+    def serviceStopped(self) -> None:
+        """
+        Called when the service is stopped, either by the connection ending
         or by another service being started
         """
+        pass
 
-    def logPrefix(self):
-        return "SSHService %s on %s" % (self.name,
-                self.transport.transport.logPrefix())
+    def logPrefix(self) -> str:
+        return f"SSHService {self.name} on {self.transport.transport.logPrefix()}"
 
-    def packetReceived(self, messageNum, packet):
+    def packetReceived(self, message_num: int, packet: bytes) -> None:
         """
-        called when we receive a packet on the transport
+        Called when we receive a packet on the transport
         """
-        #print self.protocolMessages
-        if messageNum in self.protocolMessages:
-            messageType = self.protocolMessages[messageNum]
-            f = getattr(self,'ssh_%s' % messageType[4:],
-                        None)
-            if f is not None:
-                return f(packet)
-        log.msg("couldn't handle %r" % messageNum)
-        log.msg(repr(packet))
-        self.transport.sendUnimplemented()
-
+        message_type = self.getProtocolMessageName(message_num)
+        f = getAttribute(f"ssh_{message_type[4:]}", self, None)
+        if f is not None:
+            return f
