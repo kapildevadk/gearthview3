@@ -3,10 +3,11 @@
 # See LICENSE for details.
 
 """
-I contain PythonScript, which is a very simple python script resource.
+This module contains PythonScript, which is a simple python script resource.
 """
 
-import os, traceback
+import os
+import traceback
 
 try:
     import cStringIO as StringIO
@@ -15,28 +16,28 @@ except ImportError:
 
 from twisted import copyright
 from twisted.python.compat import execfile
-from twisted.web import http, server, static, resource, html
+from twisted.web import http, server, resource, html
 
+__all__ = [
+    "AlreadyCached",
+    "CacheScanner",
+    "noRsrc",
+    "ResourceScript",
+    "ResourceTemplate",
+    "ResourceScriptWrapper",
+    "ResourceScriptDirectory",
+    "PythonScript",
+]
 
-rpyNoResource = """<p>You forgot to assign to the variable "resource" in your script. For example:</p>
-<pre>
-# MyCoolWebApp.rpy
-
-import mygreatresource
-
-resource = mygreatresource.MyGreatResource()
-</pre>
-"""
 
 class AlreadyCached(Exception):
-    """This exception is raised when a path has already been cached.
-    """
+    """This exception is raised when a path has already been cached."""
 
 class CacheScanner:
     def __init__(self, path, registry):
         self.path = path
         self.registry = registry
-        self.doCache = 0
+        self.do_cache = False
 
     def cache(self):
         c = self.registry.getCachedPath(self.path)
@@ -45,7 +46,7 @@ class CacheScanner:
         self.recache()
 
     def recache(self):
-        self.doCache = 1
+        self.do_cache = True
 
 noRsrc = resource.ErrorPage(500, "Whoops! Internal Error", rpyNoResource)
 
@@ -56,37 +57,37 @@ def ResourceScript(path, registry):
     renderred.
     """
     cs = CacheScanner(path, registry)
-    glob = {'__file__': path,
-            'resource': noRsrc,
-            'registry': registry,
-            'cache': cs.cache,
-            'recache': cs.recache}
+    glob = {
+        "__file__": path,
+        "resource": noRsrc,
+        "registry": registry,
+        "cache": cs.cache,
+        "recache": cs.recache,
+    }
     try:
-        execfile(path, glob, glob)
-    except AlreadyCached, ac:
+        with open(path) as f:
+            exec(f.read(), glob, glob)
+    except AlreadyCached as ac:
         return ac.args[0]
-    rsrc = glob['resource']
-    if cs.doCache and rsrc is not noRsrc:
+    rsrc = glob["resource"]
+    if cs.do_cache and rsrc is not noRsrc:
         registry.cachePath(path, rsrc)
     return rsrc
 
 def ResourceTemplate(path, registry):
     from quixote import ptl_compile
 
-    glob = {'__file__': path,
-            'resource': resource.ErrorPage(500, "Whoops! Internal Error",
-                                           rpyNoResource),
-            'registry': registry}
+    glob = {"__file__": path, "resource": noRsrc, "registry": registry}
 
-    e = ptl_compile.compile_template(open(path), path)
-    exec e in glob
-    return glob['resource']
+    with open(path) as f:
+        e = ptl_compile.compile_template(f, path)
+    exec(e, glob)
+    return glob["resource"]
 
 
 class ResourceScriptWrapper(resource.Resource):
-
     def __init__(self, path, registry=None):
-        resource.Resource.__init__(self)
+        super(ResourceScriptWrapper, self).__init__()
         self.path = path
         self.registry = registry or static.Registry()
 
@@ -97,7 +98,6 @@ class ResourceScriptWrapper(resource.Resource):
     def getChildWithDefault(self, path, request):
         res = ResourceScript(self.path, self.registry)
         return res.getChildWithDefault(path, request)
-
 
 
 class ResourceScriptDirectory(resource.Resource):
@@ -113,8 +113,9 @@ class ResourceScriptDirectory(resource.Resource):
     @ivar registry: A L{static.Registry} instance which will be used to decide
         how to interpret scripts found as children of this resource.
     """
+
     def __init__(self, pathname, registry=None):
-        resource.Resource.__init__(self)
+        super(ResourceScriptDirectory, self).__init__()
         self.path = pathname
         self.registry = registry or static.Registry()
 
@@ -154,17 +155,4 @@ class PythonScript(resource.Resource):
         """
         request.setHeader("x-powered-by","Twisted/%s" % copyright.version)
         namespace = {'request': request,
-                     '__file__': self.filename,
-                     'registry': self.registry}
-        try:
-            execfile(self.filename, namespace, namespace)
-        except IOError, e:
-            if e.errno == 2: #file not found
-                request.setResponseCode(http.NOT_FOUND)
-                request.write(resource.NoResource("File not found.").render(request))
-        except:
-            io = StringIO.StringIO()
-            traceback.print_exc(file=io)
-            request.write(html.PRE(io.getvalue()))
-        request.finish()
-        return server.NOT_DONE_YET
+                     '__file__': self.
