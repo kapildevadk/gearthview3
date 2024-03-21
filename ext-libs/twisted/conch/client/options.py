@@ -1,34 +1,38 @@
 # Copyright (c) Twisted Matrix Laboratories.
 # See LICENSE for details.
 
-#
+from typing import List, Tuple, Dict, Optional
+
 from twisted.conch.ssh.transport import SSHClientTransport, SSHCiphers
 from twisted.python import usage
 
-import sys
-
 class ConchOptions(usage.Options):
+    """
+    Options for the Twisted Conch SSH client.
+    """
 
-    optParameters = [['user', 'l', None, 'Log in using this user name.'],
-                     ['identity', 'i', None],
-                     ['ciphers', 'c', None],
-                     ['macs', 'm', None],
-                     ['port', 'p', None, 'Connect to this port.  Server must be on the same port.'],
-                     ['option', 'o', None, 'Ignored OpenSSH options'],
-                     ['host-key-algorithms', '', None],
-                     ['known-hosts', '', None, 'File to check for host keys'],
-                     ['user-authentications', '', None, 'Types of user authentications to use.'],
-                     ['logfile', '', None, 'File to log to, or - for stdout'],
-                   ]
+    optParameters = [
+        ['user', 'l', None, 'Log in using this user name.'],
+        ['identity', 'i', None],
+        ['ciphers', 'c', None],
+        ['macs', 'm', None],
+        ['port', 'p', None, 'Connect to this port.  Server must be on the same port.'],
+        ['option', 'o', None, 'Ignored OpenSSH options'],
+        ['host-key-algorithms', '', None],
+        ['known-hosts', '', None, 'File to check for host keys'],
+        ['user-authentications', '', None, 'Types of user authentications to use.'],
+        ['logfile', '', None, 'File to log to, or - for stdout'],
+    ]
 
-    optFlags = [['version', 'V', 'Display version number only.'],
-                ['compress', 'C', 'Enable compression.'],
-                ['log', 'v', 'Enable logging (defaults to stderr)'],
-                ['nox11', 'x', 'Disable X11 connection forwarding (default)'],
-                ['agent', 'A', 'Enable authentication agent forwarding'],
-                ['noagent', 'a', 'Disable authentication agent forwarding (default)'],
-                ['reconnect', 'r', 'Reconnect to the server if the connection is lost.'],
-               ]
+    optFlags = [
+        ['version', 'V', 'Display version number only.'],
+        ['compress', 'C', 'Enable compression.'],
+        ['log', 'v', 'Enable logging (defaults to stderr)'],
+        ['nox11', 'x', 'Disable X11 connection forwarding (default)'],
+        ['agent', 'A', 'Enable authentication agent forwarding'],
+        ['noagent', 'a', 'Disable authentication agent forwarding (default)'],
+        ['reconnect', 'r', 'Reconnect to the server if the connection is lost.'],
+    ]
 
     compData = usage.Completions(
         mutuallyExclusive=[("agent", "noagent")],
@@ -43,8 +47,9 @@ class ConchOptions(usage.Options):
             "host-key-algorithms": usage.CompleteMultiList(
                 SSHClientTransport.supportedPublicKeys,
                 descr='host key algorithms to choose from'),
-            #"user-authentications": usage.CompleteMultiList(?
-            # descr='user authentication types' ),
+            "user-authentications": usage.CompleteMultiList(
+                [],
+                descr='user authentication types' ),
             },
         extraActions=[usage.CompleteUserAtHost(),
                       usage.Completer(descr="command"),
@@ -54,43 +59,52 @@ class ConchOptions(usage.Options):
 
     def __init__(self, *args, **kw):
         usage.Options.__init__(self, *args, **kw)
-        self.identitys = []
-        self.conns = None
+        self.identitys: List[str] = []
+        self.conns: Optional[str] = None
 
-    def opt_identity(self, i):
+    def opt_identity(self, i: str):
         """Identity for public-key authentication"""
         self.identitys.append(i)
 
-    def opt_ciphers(self, ciphers):
+    def opt_ciphers(self, ciphers: str):
         "Select encryption algorithms"
         ciphers = ciphers.split(',')
+        valid_ciphers = set(SSHCiphers.cipherMap.keys())
         for cipher in ciphers:
-            if not SSHCiphers.cipherMap.has_key(cipher):
-                sys.exit("Unknown cipher type '%s'" % cipher)
+            if cipher not in valid_ciphers:
+                raise ValueError(f"Unknown cipher type '{cipher}'")
         self['ciphers'] = ciphers
 
-
-    def opt_macs(self, macs):
+    def opt_macs(self, macs: str):
         "Specify MAC algorithms"
         macs = macs.split(',')
+        valid_macs = set(SSHCiphers.macMap.keys())
         for mac in macs:
-            if not SSHCiphers.macMap.has_key(mac):
-                sys.exit("Unknown mac type '%s'" % mac)
+            if mac not in valid_macs:
+                raise ValueError(f"Unknown mac type '{mac}'")
         self['macs'] = macs
 
-    def opt_host_key_algorithms(self, hkas):
+    def opt_host_key_algorithms(self, hkas: str):
         "Select host key algorithms"
         hkas = hkas.split(',')
+        valid_hkas = set(SSHClientTransport.supportedPublicKeys)
         for hka in hkas:
-            if hka not in SSHClientTransport.supportedPublicKeys:
-                sys.exit("Unknown host key type '%s'" % hka)
+            if hka not in valid_hkas:
+                raise ValueError(f"Unknown host key type '{hka}'")
         self['host-key-algorithms'] = hkas
 
-    def opt_user_authentications(self, uas):
+    def opt_user_authentications(self, uas: str):
         "Choose how to authenticate to the remote server"
         self['user-authentications'] = uas.split(',')
 
-#    def opt_compress(self):
-#        "Enable compression"
-#        self.enableCompression = 1
-#        SSHClientTransport.supportedCompressions[0:1] = ['zlib']
+    def opt_compress(self):
+        "Enable compression"
+        self.enableCompression = 1
+        SSHClientTransport.supportedCompressions[0:1] = ['zlib']
+
+    def parse_option(self, option: str):
+        """
+        Parse an OpenSSH option.
+        """
+        pass
+
