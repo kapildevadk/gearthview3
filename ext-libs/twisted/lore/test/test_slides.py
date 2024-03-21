@@ -5,7 +5,7 @@
 Tests for L{twisted.lore.slides}.
 """
 
-from xml.dom.minidom import Element, Text
+import xml.dom.minidom
 
 from twisted.trial.unittest import TestCase
 from twisted.lore.slides import HTMLSlide, splitIntoSlides, insertPrevNextLinks
@@ -21,39 +21,37 @@ class SlidesTests(TestCase):
         each element of which contains the title of a slide taken from an I{h2}
         element and the body of that slide.
         """
-        parent = Element('html')
-        body = Element('body')
-        parent.appendChild(body)
+        document = xml.dom.minidom.Document()
+        body = document.createElement('body')
+        document.appendChild(body)
 
-        first = Element('h2')
-        text = Text()
-        text.data = 'first slide'
-        first.appendChild(text)
-        body.appendChild(first)
-        body.appendChild(Element('div'))
-        body.appendChild(Element('span'))
+        first_slide_title = document.createElement('h2')
+        first_slide_title_text = document.createTextNode('first slide')
+        first_slide_title.appendChild(first_slide_title_text)
+        body.appendChild(first_slide_title)
+        body.appendChild(document.createElement('div'))
+        body.appendChild(document.createElement('span'))
 
-        second = Element('h2')
-        text = Text()
-        text.data = 'second slide'
-        second.appendChild(text)
-        body.appendChild(second)
-        body.appendChild(Element('p'))
-        body.appendChild(Element('br'))
+        second_slide_title = document.createElement('h2')
+        second_slide_title_text = document.createTextNode('second slide')
+        second_slide_title.appendChild(second_slide_title_text)
+        body.appendChild(second_slide_title)
+        body.appendChild(document.createElement('p'))
+        body.appendChild(document.createElement('br'))
 
-        slides = splitIntoSlides(parent)
+        slides = splitIntoSlides(document)
 
-        self.assertEqual(slides[0][0], 'first slide')
-        firstContent = slides[0][1]
-        self.assertEqual(firstContent[0].tagName, 'div')
-        self.assertEqual(firstContent[1].tagName, 'span')
-        self.assertEqual(len(firstContent), 2)
+        self.assertEqual(slides[0][0].data, 'first slide')
+        first_slide_content = slides[0][1]
+        self.assertEqual(first_slide_content[0].tagName, 'div')
+        self.assertEqual(first_slide_content[1].tagName, 'span')
+        self.assertEqual(len(first_slide_content), 2)
 
-        self.assertEqual(slides[1][0], 'second slide')
-        secondContent = slides[1][1]
-        self.assertEqual(secondContent[0].tagName, 'p')
-        self.assertEqual(secondContent[1].tagName, 'br')
-        self.assertEqual(len(secondContent), 2)
+        self.assertEqual(slides[1][0].data, 'second slide')
+        second_slide_content = slides[1][1]
+        self.assertEqual(second_slide_content[0].tagName, 'p')
+        self.assertEqual(second_slide_content[1].tagName, 'br')
+        self.assertEqual(len(second_slide_content), 2)
 
         self.assertEqual(len(slides), 2)
 
@@ -64,22 +62,23 @@ class SlidesTests(TestCase):
         previous slide to each node with a I{previous} class and the title of
         the next slide to each node with a I{next} class.
         """
-        next = Element('span')
-        next.setAttribute('class', 'next')
-        container = Element('div')
-        container.appendChild(next)
-        slideWithNext = HTMLSlide(container, 'first', 0)
+        next_element = self.document.createElement('span')
+        next_element.setAttribute('class', 'next')
+        container = self.document.createElement('div')
+        container.appendChild(next_element)
+        slide_with_next = HTMLSlide(container, 'first', 0)
 
-        previous = Element('span')
-        previous.setAttribute('class', 'previous')
-        container = Element('div')
-        container.appendChild(previous)
-        slideWithPrevious = HTMLSlide(container, 'second', 1)
+        previous_element = self.document.createElement('span')
+        previous_element.setAttribute('class', 'previous')
+        container = self.document.createElement('div')
+        container.appendChild(previous_element)
+        slide_with_previous = HTMLSlide(container, 'second', 1)
 
         insertPrevNextLinks(
-            [slideWithNext, slideWithPrevious], None, None)
+            [slide_with_next, slide_with_previous], None, None)
 
         self.assertEqual(
-            next.toxml(), '<span class="next">second</span>')
+            next_element.toxml(), '<span class="next">second</span>')
         self.assertEqual(
-            previous.toxml(), '<span class="previous">first</span>')
+            previous_element.toxml(), '<span class="previous">first</span>')
+
