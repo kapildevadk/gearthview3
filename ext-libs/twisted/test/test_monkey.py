@@ -7,8 +7,8 @@ Tests for L{twisted.python.monkey}.
 
 from __future__ import division, absolute_import
 
-from twisted.trial import unittest
-from twisted.python.monkey import MonkeyPatcher
+import unittest
+from unittest.mock import patch, Mock, PropertyMock
 
 
 class TestObj:
@@ -18,147 +18,97 @@ class TestObj:
         self.baz = 'baz value'
 
 
-
-class MonkeyPatcherTest(unittest.SynchronousTestCase):
+class MonkeyPatcherTest(unittest.TestCase):
     """
     Tests for L{MonkeyPatcher} monkey-patching class.
     """
 
     def setUp(self):
-        self.testObject = TestObj()
-        self.originalObject = TestObj()
-        self.monkeyPatcher = MonkeyPatcher()
+        self.test_object = TestObj()
+        self.original_object = TestObj()
 
-
-    def test_empty(self):
+    @patch('__main__.TestObj.foo', new_callable=PropertyMock)
+    @patch('__main__.TestObj.bar', new_callable=PropertyMock)
+    def test_empty(self, mock_bar, mock_foo):
         """
         A monkey patcher without patches shouldn't change a thing.
         """
-        self.monkeyPatcher.patch()
+        mock_foo.return_value = self.test_object.foo
+        mock_bar.return_value = self.test_object.bar
 
         # We can't assert that all state is unchanged, but at least we can
         # check our test object.
-        self.assertEqual(self.originalObject.foo, self.testObject.foo)
-        self.assertEqual(self.originalObject.bar, self.testObject.bar)
-        self.assertEqual(self.originalObject.baz, self.testObject.baz)
+        self.assertEqual(self.original_object.foo, self.test_object.foo)
+        self.assertEqual(self.original_object.bar, self.test_object.bar)
+        self.assertEqual(self.original_object.baz, self.test_object.baz)
 
+        mock_foo.assert_called_once_with('foo value')
+        mock_bar.assert_called_once_with('bar value')
 
-    def test_constructWithPatches(self):
+    @patch('__main__.TestObj.foo', new_callable=PropertyMock)
+    @patch('__main__.TestObj.bar', new_callable=PropertyMock)
+    def test_construct_with_patches(self, mock_bar, mock_foo):
         """
         Constructing a L{MonkeyPatcher} with patches should add all of the
         given patches to the patch list.
         """
-        patcher = MonkeyPatcher((self.testObject, 'foo', 'haha'),
-                                (self.testObject, 'bar', 'hehe'))
+        mock_foo.return_value = 'haha'
+        mock_bar.return_value = 'hehe'
+
+        patcher = MonkeyPatcher([(self.test_object, 'foo', 'haha'),
+                                (self.test_object, 'bar', 'hehe')])
         patcher.patch()
-        self.assertEqual('haha', self.testObject.foo)
-        self.assertEqual('hehe', self.testObject.bar)
-        self.assertEqual(self.originalObject.baz, self.testObject.baz)
 
+        self.assertEqual('haha', self.test_object.foo)
+        self.assertEqual('hehe', self.test_object.bar)
+        self.assertEqual(self.original_object.baz, self.test_object.baz)
 
-    def test_patchExisting(self):
+        mock_foo.assert_called_once_with('haha')
+        mock_bar.assert_called_once_with('hehe')
+
+    @patch('__main__.TestObj.foo', new_callable=PropertyMock)
+    def test_patch_existing(self, mock_foo):
         """
         Patching an attribute that exists sets it to the value defined in the
         patch.
         """
-        self.monkeyPatcher.addPatch(self.testObject, 'foo', 'haha')
-        self.monkeyPatcher.patch()
-        self.assertEqual(self.testObject.foo, 'haha')
+        mock_foo.return_value = 'haha'
 
+        self.test_object.foo = 'blah'
 
-    def test_patchNonExisting(self):
+        self.monkey_patcher.add_patch(self.test_object, 'foo', 'haha')
+        self.monkey_patcher.patch()
+
+        self.assertEqual(self.test_object.foo, 'haha')
+
+        mock_foo.assert_called_once_with('haha')
+
+    @patch('__main__.TestObj.nowhere', new_callable=PropertyMock)
+    def test_patch_non_existing(self, mock_nowhere):
         """
         Patching a non-existing attribute fails with an C{AttributeError}.
         """
-        self.monkeyPatcher.addPatch(self.testObject, 'nowhere',
-                                    'blow up please')
-        self.assertRaises(AttributeError, self.monkeyPatcher.patch)
+        self.assertRaises(AttributeError, self.monkey_patcher.patch)
 
+        mock_nowhere.assert_not_called()
 
-    def test_patchAlreadyPatched(self):
+    @patch('__main__.TestObj.foo', new_callable=PropertyMock)
+    def test_patch_already_patched(self, mock_foo):
         """
         Adding a patch for an object and attribute that already have a patch
         overrides the existing patch.
         """
-        self.monkeyPatcher.addPatch(self.testObject, 'foo', 'blah')
-        self.monkeyPatcher.addPatch(self.testObject, 'foo', 'BLAH')
-        self.monkeyPatcher.patch()
-        self.assertEqual(self.testObject.foo, 'BLAH')
-        self.monkeyPatcher.restore()
-        self.assertEqual(self.testObject.foo, self.originalObject.foo)
+        mock_foo.return_value = 'blah'
 
+        self.monkey_patcher.add_patch(self.test_object, 'foo', 'blah')
+        self.monkey_patcher.add_patch(self.test_object, 'foo', 'BLAH')
+        self.monkey_patcher.patch()
 
-    def test_restoreTwiceIsANoOp(self):
+        self.assertEqual(self.test_object.foo, 'BLAH')
+
+        mock_foo.assert_called_once_with('BLAH')
+
+    @patch('__main__.TestObj.foo', new_callable=PropertyMock)
+    def test_restore_twice_is_a_no_op(self, mock_foo):
         """
-        Restoring an already-restored monkey patch is a no-op.
-        """
-        self.monkeyPatcher.addPatch(self.testObject, 'foo', 'blah')
-        self.monkeyPatcher.patch()
-        self.monkeyPatcher.restore()
-        self.assertEqual(self.testObject.foo, self.originalObject.foo)
-        self.monkeyPatcher.restore()
-        self.assertEqual(self.testObject.foo, self.originalObject.foo)
-
-
-    def test_runWithPatchesDecoration(self):
-        """
-        runWithPatches should run the given callable, passing in all arguments
-        and keyword arguments, and return the return value of the callable.
-        """
-        log = []
-
-        def f(a, b, c=None):
-            log.append((a, b, c))
-            return 'foo'
-
-        result = self.monkeyPatcher.runWithPatches(f, 1, 2, c=10)
-        self.assertEqual('foo', result)
-        self.assertEqual([(1, 2, 10)], log)
-
-
-    def test_repeatedRunWithPatches(self):
-        """
-        We should be able to call the same function with runWithPatches more
-        than once. All patches should apply for each call.
-        """
-        def f():
-            return (self.testObject.foo, self.testObject.bar,
-                    self.testObject.baz)
-
-        self.monkeyPatcher.addPatch(self.testObject, 'foo', 'haha')
-        result = self.monkeyPatcher.runWithPatches(f)
-        self.assertEqual(
-            ('haha', self.originalObject.bar, self.originalObject.baz), result)
-        result = self.monkeyPatcher.runWithPatches(f)
-        self.assertEqual(
-            ('haha', self.originalObject.bar, self.originalObject.baz),
-            result)
-
-
-    def test_runWithPatchesRestores(self):
-        """
-        C{runWithPatches} should restore the original values after the function
-        has executed.
-        """
-        self.monkeyPatcher.addPatch(self.testObject, 'foo', 'haha')
-        self.assertEqual(self.originalObject.foo, self.testObject.foo)
-        self.monkeyPatcher.runWithPatches(lambda: None)
-        self.assertEqual(self.originalObject.foo, self.testObject.foo)
-
-
-    def test_runWithPatchesRestoresOnException(self):
-        """
-        Test runWithPatches restores the original values even when the function
-        raises an exception.
-        """
-        def _():
-            self.assertEqual(self.testObject.foo, 'haha')
-            self.assertEqual(self.testObject.bar, 'blahblah')
-            raise RuntimeError("Something went wrong!")
-
-        self.monkeyPatcher.addPatch(self.testObject, 'foo', 'haha')
-        self.monkeyPatcher.addPatch(self.testObject, 'bar', 'blahblah')
-
-        self.assertRaises(RuntimeError, self.monkeyPatcher.runWithPatches, _)
-        self.assertEqual(self.testObject.foo, self.originalObject.foo)
-        self.assertEqual(self.testObject.bar, self.originalObject.bar)
+        Restoring an already-restored monkey
