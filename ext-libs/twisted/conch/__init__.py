@@ -2,17 +2,16 @@
 # Copyright (c) Twisted Matrix Laboratories.
 # See LICENSE for details.
 
-#
-
+# Terminal emulation, SSHv2 and telnet for Twisted.Conch.
 
 """
-Twisted.Conch: The Twisted Shell. Terminal emulation, SSHv2 and telnet.
-
-Currently this contains the SSHv2 implementation, but it may work over other
-protocols in the future. (i.e. Telnet)
+This module contains the SSHv2 implementation for Twisted.Conch, but it may
+work over other protocols such as Telnet in the future.
 
 Maintainer: Paul Swartz
 """
 
-from twisted.conch._version import version
-__version__ = version.short()
+import twisted.conch._version
+
+__version__ = twisted.conch._version.version.short()
+
