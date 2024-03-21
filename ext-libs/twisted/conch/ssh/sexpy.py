@@ -1,9 +1,10 @@
 # Copyright (c) Twisted Matrix Laboratories.
 # See LICENSE for details.
 
-#
-
-def parse(s):
+def parse(s: str) -> list:
+    """
+    Parses a string in s-expression format and returns a nested list.
+    """
     s = s.strip()
     expr = []
     while s:
@@ -16,27 +17,30 @@ def parse(s):
             continue
         if s[0] == ')':
             aList = expr.pop()
-            s=s[1:]
+            s = s[1:]
             if not expr:
-                assert not s
                 return aList
             continue
         i = 0
-        while s[i].isdigit(): i+=1
-        assert i
+        while i < len(s) and s[i].isdigit():
+            i += 1
+        if i == 0:
+            raise ValueError("Invalid input: expected a number")
         length = int(s[:i])
-        data = s[i+1:i+1+length]
+        if length > len(s):
+            raise ValueError("Invalid input: number too large")
+        data = s[i + 1:i + 1 + length]
         expr[-1].append(data)
-        s=s[i+1+length:]
-    assert 0, "this should not happen"
+        s = s[i + 1 + length:]
+    if expr:
+        raise ValueError("Invalid input: unmatched opening parenthesis")
+    return expr[0]
 
-def pack(sexp):
+def pack(sexp: list) -> str:
+    """
+    Converts a nested list in s-expression format to a string.
+    """
     s = ""
     for o in sexp:
-        if type(o) in (type(()), type([])):
-            s+='('
-            s+=pack(o)
-            s+=')'
-        else:
-            s+='%i:%s' % (len(o), o)
-    return s
+        if isinstance(o, (tuple, list)):
+            s += '('
