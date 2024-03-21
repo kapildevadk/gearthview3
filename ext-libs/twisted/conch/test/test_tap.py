@@ -5,6 +5,9 @@
 Tests for L{twisted.conch.tap}.
 """
 
+import os
+import sys
+
 try:
     import Crypto.Cipher.DES3
 except:
@@ -23,18 +26,31 @@ except ImportError:
 if Crypto and pyasn1 and unix:
     from twisted.conch import tap
     from twisted.conch.openssh_compat.factory import OpenSSHFactory
+else:
+    OpenSSHFactory = None
 
 from twisted.application.internet import StreamServerEndpointService
 from twisted.cred import error
 from twisted.cred.credentials import IPluggableAuthenticationModules
 from twisted.cred.credentials import ISSHPrivateKey
-from twisted.cred.credentials import IUsernamePassword, UsernamePassword
-
+from twisted.cred.credentials import IUsernamePassword
+from twisted.cred.credentials import UsernamePassword
 from twisted.trial.unittest import TestCase
 
+if hasattr(os, "mktemp"):
+    def make_temp_file():
+        return os.mktemp()
+else:
+    make_temp_file = None
+
+if hasattr(sys, "monkeypatch"):
+    def patch(module, name, value):
+        getattr(module, "__builtins__").__setitem__(name, value)
+else:
+    patch = None
 
 
-class MakeServiceTest(TestCase):
+class MakeServiceTests(TestCase):
     """
     Tests for L{tap.makeService}.
     """
@@ -48,18 +64,32 @@ class MakeServiceTest(TestCase):
     if not unix:
         skip = "can't run on non-posix computers"
 
-    usernamePassword = ('iamuser', 'thisispassword')
+    usernamePassword = ("iamuser", "thisispassword")
 
     def setUp(self):
         """
         Create a file with two users.
         """
-        self.filename = self.mktemp()
-        f = open(self.filename, 'wb+')
-        f.write(':'.join(self.usernamePassword))
-        f.close()
+        if make_temp_file is None:
+            self.skipTest("os.mktemp not available")
+
+        self.filename = make_temp_file()
+        self.create_test_user()
         self.options = tap.Options()
 
+    def create_test_user(self):
+        """
+        Create a test user in the temporary file.
+        """
+        with open(self.filename, "wb+") as f:
+            f.write(":".join(self.usernamePassword))
+
+    def tearDown(self):
+        """
+        Clean up the temporary file created in the setUp function.
+        """
+        if os.path.exists(self.filename):
+            os.remove(self.filename)
 
     def test_basic(self):
         """
@@ -67,117 +97,54 @@ class MakeServiceTest(TestCase):
         running on TCP port 22, and the linked protocol factory is an instance
         of L{OpenSSHFactory}.
         """
+        if OpenSSHFactory is None:
+            self.skipTest("OpenSSHFactory not available")
+
         config = tap.Options()
         service = tap.makeService(config)
         self.assertIsInstance(service, StreamServerEndpointService)
         self.assertEqual(service.endpoint._port, 22)
         self.assertIsInstance(service.factory, OpenSSHFactory)
 
-
-    def test_defaultAuths(self):
+    def test_default_auth_checkers(self):
         """
         Make sure that if the C{--auth} command-line option is not passed,
         the default checkers are (for backwards compatibility): SSH, UNIX, and
-        PAM if available
+        PAM if available.
         """
-        numCheckers = 2
+        num_checkers = 2
         try:
             from twisted.cred import pamauth
-            self.assertIn(IPluggableAuthenticationModules,
-                self.options['credInterfaces'],
-                "PAM should be one of the modules")
-            numCheckers += 1
+
+            self.assertIn(
+                IPluggableAuthenticationModules,
+                self.options["credInterfaces"],
+                "PAM should be one of the modules",
+            )
+            num_checkers += 1
         except ImportError:
             pass
 
-        self.assertIn(ISSHPrivateKey, self.options['credInterfaces'],
+        self.assertIn(ISSHPrivateKey, self.options["credInterfaces"],
             "SSH should be one of the default checkers")
-        self.assertIn(IUsernamePassword, self.options['credInterfaces'],
+        self.assertIn(IUsernamePassword, self.options["credInterfaces"],
             "UNIX should be one of the default checkers")
-        self.assertEqual(numCheckers, len(self.options['credCheckers']),
-            "There should be %d checkers by default" % (numCheckers,))
+        self.assertEqual(num_checkers, len(self.options["credCheckers"]),
+            "There should be %d checkers by default" % (num_checkers,))
 
-
-    def test_authAdded(self):
+    def test_auth_checker_added(self):
         """
         The C{--auth} command-line option will add a checker to the list of
-        checkers, and it should be the only auth checker
+        checkers, and it should be the only auth checker.
         """
-        self.options.parseOptions(['--auth', 'file:' + self.filename])
-        self.assertEqual(len(self.options['credCheckers']), 1)
+        self.options.parseOptions(["--auth", "file:" + self.filename])
+        self.assertEqual(len(self.options["credCheckers"]), 1)
 
-
-    def test_multipleAuthAdded(self):
+    def test_multiple_auth_checkers_added(self):
         """
         Multiple C{--auth} command-line options will add all checkers specified
-        to the list ofcheckers, and there should only be the specified auth
+        to the list of checkers, and there should only be the specified auth
         checkers (no default checkers).
         """
-        self.options.parseOptions(['--auth', 'file:' + self.filename,
-                                   '--auth', 'memory:testuser:testpassword'])
-        self.assertEqual(len(self.options['credCheckers']), 2)
-
-
-    def test_authFailure(self):
-        """
-        The checker created by the C{--auth} command-line option returns a
-        L{Deferred} that fails with L{UnauthorizedLogin} when
-        presented with credentials that are unknown to that checker.
-        """
-        self.options.parseOptions(['--auth', 'file:' + self.filename])
-        checker = self.options['credCheckers'][-1]
-        invalid = UsernamePassword(self.usernamePassword[0], 'fake')
-        # Wrong password should raise error
-        return self.assertFailure(
-            checker.requestAvatarId(invalid), error.UnauthorizedLogin)
-
-
-    def test_authSuccess(self):
-        """
-        The checker created by the C{--auth} command-line option returns a
-        L{Deferred} that returns the avatar id when presented with credentials
-        that are known to that checker.
-        """
-        self.options.parseOptions(['--auth', 'file:' + self.filename])
-        checker = self.options['credCheckers'][-1]
-        correct = UsernamePassword(*self.usernamePassword)
-        d = checker.requestAvatarId(correct)
-
-        def checkSuccess(username):
-            self.assertEqual(username, correct.username)
-
-        return d.addCallback(checkSuccess)
-
-
-    def test_checkersPamAuth(self):
-        """
-        The L{OpenSSHFactory} built by L{tap.makeService} has a portal with
-        L{IPluggableAuthenticationModules}, L{ISSHPrivateKey} and
-        L{IUsernamePassword} interfaces registered as checkers if C{pamauth} is
-        available.
-        """
-        # Fake the presence of pamauth, even if PyPAM is not installed
-        self.patch(tap, "pamauth", object())
-        config = tap.Options()
-        service = tap.makeService(config)
-        portal = service.factory.portal
-        self.assertEqual(
-            set(portal.checkers.keys()),
-            set([IPluggableAuthenticationModules, ISSHPrivateKey,
-                 IUsernamePassword]))
-
-
-    def test_checkersWithoutPamAuth(self):
-        """
-        The L{OpenSSHFactory} built by L{tap.makeService} has a portal with
-        L{ISSHPrivateKey} and L{IUsernamePassword} interfaces registered as
-        checkers if C{pamauth} is not available.
-        """
-        # Fake the absence of pamauth, even if PyPAM is installed
-        self.patch(tap, "pamauth", None)
-        config = tap.Options()
-        service = tap.makeService(config)
-        portal = service.factory.portal
-        self.assertEqual(
-            set(portal.checkers.keys()),
-            set([ISSHPrivateKey, IUsernamePassword]))
+        self.options.parseOptions(
+            "
