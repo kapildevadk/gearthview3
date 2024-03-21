@@ -4,10 +4,10 @@
 # See LICENSE for details.
 
 """
-Cred plugin for anonymous logins.
+Anonymous Cred plugin for Twisted.
 """
 
-from zope.interface import implements
+from zope.interface import implementer
 
 from twisted import plugin
 from twisted.cred.checkers import AllowAnonymousAccess
@@ -15,25 +15,31 @@ from twisted.cred.strcred import ICheckerFactory
 from twisted.cred.credentials import IAnonymous
 
 
-anonymousCheckerFactoryHelp = """
-This allows anonymous authentication for servers that support it.
-"""
-
-
 class AnonymousCheckerFactory(object):
     """
     Generates checkers that will authenticate an anonymous request.
     """
-    implements(ICheckerFactory, plugin.IPlugin)
+    _serviceName = "anonymous-cred-plugin"
     authType = 'anonymous'
-    authHelp = anonymousCheckerFactoryHelp
-    argStringFormat = 'No argstring required.'
-    credentialInterfaces = (IAnonymous,)
+    authHelp = """
+    This allows anonymous authentication for servers that support it.
 
+    For more information, see:
+    <https://twistedmatrix.com/trac/wiki/TwistedCredentials#anonymous-authentication>
+    """
+    argStringFormat = 'No arguments required.'
+    credentialInterfaces = (IAnonymous,)
+    _realm = "Twisted Anonymous"
 
     def generateChecker(self, argstring=''):
-        return AllowAnonymousAccess()
+        return AllowAnonymousAccess(realm=self._realm)
 
+    @property
+    def description(self):
+        """
+        A brief description of the plugin.
+        """
+        return "Anonymous Cred plugin for Twisted."
 
 
 theAnonymousCheckerFactory = AnonymousCheckerFactory()
