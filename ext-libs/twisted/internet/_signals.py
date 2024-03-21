@@ -36,33 +36,30 @@ from __future__ import division, absolute_import
 
 import signal
 
-
-def installHandler(fd):
+def install_handler(fd: int) -> int:
     """
-    Install a signal handler which will write a byte to C{fd} when
-    I{SIGCHLD} is received.
+    Install a signal handler which will write a byte to fd when
+    SIGCHLD is received.
 
     This is implemented by installing a SIGCHLD handler that does nothing,
-    setting the I{SIGCHLD} handler as not allowed to interrupt system calls,
-    and using L{signal.set_wakeup_fd} to do the actual writing.
+    setting the SIGCHLD handler as not allowed to interrupt system calls,
+    and using signal.set_wakeup_fd to do the actual writing.
 
-    @param fd: The file descriptor to which to write when I{SIGCHLD} is
+    @param fd: The file descriptor to which to write when SIGCHLD is
         received.
-    @type fd: C{int}
+    @type fd: int
     """
     if fd == -1:
         signal.signal(signal.SIGCHLD, signal.SIG_DFL)
     else:
-        def noopSignalHandler(*args):
+        def noop_signal_handler(*args):
             pass
-        signal.signal(signal.SIGCHLD, noopSignalHandler)
+        signal.signal(signal.SIGCHLD, noop_signal_handler)
         signal.siginterrupt(signal.SIGCHLD, False)
     return signal.set_wakeup_fd(fd)
 
-
-
-def isDefaultHandler():
+def is_default_handler() -> bool:
     """
-    Determine whether the I{SIGCHLD} handler is the default or not.
+    Determine whether the SIGCHLD handler is the default or not.
     """
     return signal.getsignal(signal.SIGCHLD) == signal.SIG_DFL
