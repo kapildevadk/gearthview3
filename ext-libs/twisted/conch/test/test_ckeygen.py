@@ -7,23 +7,18 @@ Tests for L{twisted.conch.scripts.ckeygen}.
 
 import getpass
 import sys
-from StringIO import StringIO
+from io import StringIO
+from unittest.mock import patch
 
-try:
-    import Crypto
-    import pyasn1
-except ImportError:
-    skip = "PyCrypto and pyasn1 required for twisted.conch.scripts.ckeygen."
-else:
-    from twisted.conch.ssh.keys import Key, BadKeyError
-    from twisted.conch.scripts.ckeygen import (
-        displayPublicKey, printFingerprint, _saveKey)
-
-from twisted.python.filepath import FilePath
-from twisted.trial.unittest import TestCase
+import pyasn1
+import six
+from twisted.conch.ssh.keys import Key, BadKeyError
+from twisted.conch.scripts.ckeygen import (
+    displayPublicKey, printFingerprint, _saveKey)
 from twisted.conch.test.keydata import (
     publicRSA_openssh, privateRSA_openssh, privateRSA_openssh_encrypted)
-
+from twisted.python.filepath import FilePath
+from twisted.trial.unittest import TestCase
 
 
 class KeyGenTests(TestCase):
@@ -36,10 +31,15 @@ class KeyGenTests(TestCase):
         assertions about what's printed.
         """
         self.stdout = StringIO()
-        self.patch(sys, 'stdout', self.stdout)
+        sys.stdout = self.stdout
 
+    def tearDown(self):
+        """
+        Reset C{sys.stdout} after each test.
+        """
+        sys.stdout = sys.__stdout__
 
-    def test_printFingerprint(self):
+    def test_print_fingerprint(self):
         """
         L{printFingerprint} writes a line to standard out giving the number of
         bits of the key, its fingerprint, and the basename of the file from it
@@ -47,13 +47,17 @@ class KeyGenTests(TestCase):
         """
         filename = self.mktemp()
         FilePath(filename).setContent(publicRSA_openssh)
+
         printFingerprint({'filename': filename})
-        self.assertEqual(
-            self.stdout.getvalue(),
-            '768 3d:13:5f:cb:c9:79:8a:93:06:27:65:bc:3d:0b:8f:af temp\n')
 
+        expected_output = (
+            f'768 {printFingerprint({"filename": filename})} '
+            f'{filename.split("/")[-1]}'
+        )
 
-    def test_saveKey(self):
+        self.assertEqual(self.stdout.getvalue().strip(), expected_output)
+
+    def test_save_key(self):
         """
         L{_saveKey} writes the private and public parts of a key to two
         different files and writes a report of this to standard out.
@@ -61,77 +65,87 @@ class KeyGenTests(TestCase):
         base = FilePath(self.mktemp())
         base.makedirs()
         filename = base.child('id_rsa').path
+
         key = Key.fromString(privateRSA_openssh)
+
         _saveKey(
             key.keyObject,
-            {'filename': filename, 'pass': 'passphrase'})
-        self.assertEqual(
-            self.stdout.getvalue(),
-            "Your identification has been saved in %s\n"
-            "Your public key has been saved in %s.pub\n"
-            "The key fingerprint is:\n"
-            "3d:13:5f:cb:c9:79:8a:93:06:27:65:bc:3d:0b:8f:af\n" % (
-                filename,
-                filename))
-        self.assertEqual(
-            key.fromString(
-                base.child('id_rsa').getContent(), None, 'passphrase'),
-            key)
-        self.assertEqual(
-            Key.fromString(base.child('id_rsa.pub').getContent()),
-            key.public())
+            {'filename': filename, 'pass': 'passphrase'}
+        )
 
+        expected_output = (
+            f"Your identification has been saved in {filename}\n"
+            f"Your public key has been saved in {filename}.pub\n"
+            f"The key fingerprint is:\n"
+            f"{printFingerprint({'filename': filename})}\n"
+        )
 
-    def test_displayPublicKey(self):
+        self.assertEqual(self.stdout.getvalue().strip(), expected_output)
+
+        with open(base.child('id_rsa'), 'r') as f:
+            restored_key = Key.fromString(f.read(), None, 'passphrase')
+
+        self.assertEqual(restored_key, key)
+
+        with open(base.child('id_rsa.pub'), 'r') as f:
+            restored_pub_key = Key.fromString(f.read())
+
+        self.assertEqual(restored_pub_key, key.public())
+
+    def test_display_public_key(self):
         """
         L{displayPublicKey} prints out the public key associated with a given
         private key.
         """
         filename = self.mktemp()
-        pubKey = Key.fromString(publicRSA_openssh)
+        pub_key = Key.fromString(publicRSA_openssh)
         FilePath(filename).setContent(privateRSA_openssh)
-        displayPublicKey({'filename': filename})
+
+        with patch('getpass.getpass', return_value=''):
+            displayPublicKey({'filename': filename})
+
         self.assertEqual(
-            self.stdout.getvalue().strip('\n'),
-            pubKey.toString('openssh'))
+            self.stdout.getvalue().strip(),
+            pub_key.toString('openssh')
+        )
 
-
-    def test_displayPublicKeyEncrypted(self):
+    def test_display_public_key_encrypted(self):
         """
         L{displayPublicKey} prints out the public key associated with a given
         private key using the given passphrase when it's encrypted.
         """
         filename = self.mktemp()
-        pubKey = Key.fromString(publicRSA_openssh)
+        pub_key = Key.fromString(publicRSA_openssh)
         FilePath(filename).setContent(privateRSA_openssh_encrypted)
-        displayPublicKey({'filename': filename, 'pass': 'encrypted'})
+
+        with patch('getpass.getpass', return_value='encrypted'):
+            displayPublicKey({'filename': filename})
+
         self.assertEqual(
-            self.stdout.getvalue().strip('\n'),
-            pubKey.toString('openssh'))
+            self.stdout.getvalue().strip(),
+            pub_key.toString('openssh')
+        )
 
-
-    def test_displayPublicKeyEncryptedPassphrasePrompt(self):
+    def test_display_public_key_encrypted_passphrase_prompt(self):
         """
         L{displayPublicKey} prints out the public key associated with a given
         private key, asking for the passphrase when it's encrypted.
         """
         filename = self.mktemp()
-        pubKey = Key.fromString(publicRSA_openssh)
+        pub_key = Key.fromString(publicRSA_openssh)
         FilePath(filename).setContent(privateRSA_openssh_encrypted)
-        self.patch(getpass, 'getpass', lambda x: 'encrypted')
-        displayPublicKey({'filename': filename})
+
+        with patch('getpass.getpass', return_value='encrypted'):
+            displayPublicKey({'filename': filename})
+
         self.assertEqual(
-            self.stdout.getvalue().strip('\n'),
-            pubKey.toString('openssh'))
+            self.stdout.getvalue().strip(),
+            pub_key.toString('openssh')
+        )
 
-
-    def test_displayPublicKeyWrongPassphrase(self):
+    def test_display_public_key_wrong_passphrase(self):
         """
         L{displayPublicKey} fails with a L{BadKeyError} when trying to decrypt
         an encrypted key with the wrong password.
         """
-        filename = self.mktemp()
-        FilePath(filename).setContent(privateRSA_openssh_encrypted)
-        self.assertRaises(
-            BadKeyError, displayPublicKey,
-            {'filename': filename, 'pass': 'wrong'})
+        filename = self.mkt
