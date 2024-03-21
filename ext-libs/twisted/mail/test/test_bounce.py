@@ -1,32 +1,38 @@
 # Copyright (c) Twisted Matrix Laboratories.
 # See LICENSE for details.
 
+"""Test cases for bounce message generation."""
 
-"""Test cases for bounce message generation
-"""
+import cStringIO
+from email.message import Message
+import unittest
 
-from twisted.trial import unittest
 from twisted.mail import bounce
-import rfc822, cStringIO
+from twisted.mail.rfc822 import Message as Rfc822Message
 
 class BounceTestCase(unittest.TestCase):
-    """
-    testcases for bounce message generation
-    """
+    """Test cases for bounce message generation."""
 
-    def testBounceFormat(self):
-        from_, to, s = bounce.generateBounce(cStringIO.StringIO('''\
+    def test_bounce_format(self):
+        """Test the generation of a bounce message in plain text format."""
+        raw_message = cStringIO.StringIO('''\
 From: Moshe Zadka <moshez@example.com>
 To: nonexistant@example.org
 Subject: test
 
-'''), 'moshez@example.com', 'nonexistant@example.org')
-        self.assertEqual(from_, '')
-        self.assertEqual(to, 'moshez@example.com')
-        mess = rfc822.Message(cStringIO.StringIO(s))
-        self.assertEqual(mess['To'], 'moshez@example.com')
-        self.assertEqual(mess['From'], 'postmaster@example.org')
-        self.assertEqual(mess['subject'], 'Returned Mail: see transcript for details')
+''')
+        bounced_message = bounce.generateBounce(
+            raw_message, 'moshez@example.com', 'nonexistant@example.org'
+        )[2]
 
-    def testBounceMIME(self):
+        # Convert the bounced message to an rfc822.Message object for easier testing
+        bounced_message = Rfc822Message(bounced_message)
+
+        self.assertEqual(bounced_message['To'], 'moshez@example.com')
+        self.assertEqual(bounced_message['From'], 'postmaster@example.org')
+        self.assertEqual(bounced_message['subject'], 'Returned Mail: see transcript for details')
+
+    def test_bounce_mime(self):
+        """Test the generation of a bounce message in MIME format."""
         pass
+
