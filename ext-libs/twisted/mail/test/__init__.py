@@ -1,1 +1,2 @@
-"Tests for twistd.mail"
+$ twistd -n twtest -m twisted.mail.test
+
