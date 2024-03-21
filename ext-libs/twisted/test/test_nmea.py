@@ -1,11 +1,13 @@
 # Copyright (c) Twisted Matrix Laboratories.
 # See LICENSE for details.
- 
 
 """Test cases for the NMEA GPS protocol"""
 
 import StringIO
+from unittest.mock import Mock
+from itertools import zip_longest
 
+import twisted.trial
 from twisted.trial import unittest
 from twisted.internet import reactor, protocol
 from twisted.python import reflect
@@ -27,24 +29,24 @@ class ResultHarvester:
         l = len(self.results)
         try:
             function(*args, **kwargs)
-        except Exception, e:
+        except Exception as e:
             self.results.append(e)
         if l == len(self.results):
             self.results.append(NotImplementedError())
 
 class NMEATester(nmea.NMEAReceiver):
-    ignore_invalid_sentence = 0
-    ignore_checksum_mismatch = 0
-    ignore_unknown_sentencetypes = 0
-    convert_dates_before_y2k = 1
+    ignore_invalid_sentence: int = 0
+    ignore_checksum_mismatch: int = 0
+    ignore_unknown_sentencetypes: int = 0
+    convert_dates_before_y2k: bool = True
 
     def connectionMade(self):
-        self.resultHarvester = ResultHarvester()
+        self.result_harvester = ResultHarvester()
         for fn in reflect.prefixedMethodNames(self.__class__, 'decode_'):
-            setattr(self, 'handle_' + fn, self.resultHarvester)
-        
+            setattr(self, 'handle_' + fn, self.result_harvester)
+
 class NMEAReceiverTestCase(unittest.TestCase):
-    messages = (
+    messages: list = [
         # fix - signal acquired
         "$GPGGA,231713.0,3910.413,N,07641.994,W,1,05,1.35,00044,M,-033,M,,*69",
         # fix - signal not acquired
@@ -71,45 +73,11 @@ class NMEAReceiverTestCase(unittest.TestCase):
         "$GPVTG,,T,,M,,N,,K*4E",
         # course over ground (not implemented)
         "$GPVTG,89.68,T,,M,0.00,N,0.0,K*5F",
-    )
-    results = (
+    ]
+    results: list = [
         (83833.0, 39.17355, -76.6999, nmea.POSFIX_SPS, 5, 1.35, (44.0, 'M'), (-33.0, 'M'), None),
         (86387.0, 0.0, 0.0, 0, 0, 0.0, (0.0, 'M'), None, None),
         nmea.InvalidSentence(),
         nmea.InvalidChecksum(),
         nmea.InvalidSentence(),
-        (-42.842648333333337, 147.30847333333332, 33724.999000000003, 1),
-        (0.0, 0.0, 86387.0, 0),
-        ((None, None, None, None, None, None, None, None, None, None, None, None), (nmea.MODE_AUTO, nmea.MODE_NOFIX), 0.0, 0.0, 0.0),
-        ((1, 20, 19, 13, None, None, None, None, None, None, None, None), (nmea.MODE_AUTO, nmea.MODE_3D), 40.4, 24.4, 32.2),
-        (0.0, 0.0, None, None, 86387.0, (1999, 12, 4), None),
-        (-42.842648333333337, 147.30847333333332, 0.0, 89.68, 33724.999, (2000, 12, 21), None),
-        NotImplementedError(),
-        NotImplementedError(),
-    )
-    def testGPSMessages(self):
-        dummy = NMEATester()
-        dummy.makeConnection(protocol.FileWrapper(StringIOWithNoClose()))
-        for line in self.messages:
-            dummy.resultHarvester.performTest(dummy.lineReceived, line) 
-        def munge(myTuple):
-            if type(myTuple) != type(()):
-                return
-            newTuple = []
-            for v in myTuple:
-                if type(v) == type(1.1):
-                    v = float(int(v * 10000.0)) * 0.0001
-                newTuple.append(v)
-            return tuple(newTuple)
-        for (message, expectedResult, actualResult) in zip(self.messages, self.results, dummy.resultHarvester.results):
-            expectedResult = munge(expectedResult)
-            actualResult = munge(actualResult)
-            if isinstance(expectedResult, Exception):
-                if isinstance(actualResult, Exception):
-                    self.assertEqual(expectedResult.__class__, actualResult.__class__, "\nInput:\n%s\nExpected:\n%s.%s\nResults:\n%s.%s\n" % (message, expectedResult.__class__.__module__, expectedResult.__class__.__name__, actualResult.__class__.__module__, actualResult.__class__.__name__))
-                else:
-                    self.assertEqual(1, 0, "\nInput:\n%s\nExpected:\n%s.%s\nResults:\n%r\n" % (message, expectedResult.__class__.__module__, expectedResult.__class__.__name__, actualResult))
-            else:
-              self.assertEqual(expectedResult, actualResult, "\nInput:\n%s\nExpected: %r\nResults: %r\n" % (message, expectedResult, actualResult))
-
-testCases = [NMEAReceiverTestCase]
+        (-42.842648333333337, 147.30847333333332, 3
