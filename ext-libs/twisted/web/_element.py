@@ -3,14 +3,14 @@
 # See LICENSE for details.
 
 from zope.interface import implements
+from typing import Any, Callable, List, Optional
 
 from twisted.web.iweb import IRenderable
-
 from twisted.web.error import MissingRenderMethod, UnexposedMethodError
 from twisted.web.error import MissingTemplateLoader
 
 
-class Expose(object):
+class Expose:
     """
     Helper for exposing methods for various uses using a simple decorator-style
     callable.
@@ -22,11 +22,13 @@ class Expose(object):
     @ivar attributeName: The attribute with which exposed methods will be
     tracked.
     """
-    def __init__(self, doc=None):
+    __slots__ = ('doc', 'exposed')
+
+    def __init__(self, doc: Optional[str] = None):
         self.doc = doc
+        self.exposed = []
 
-
-    def __call__(self, *funcObjs):
+    def __call__(self, *funcObjs: Callable[[Any], Any]) -> Callable[[Any], Any]:
         """
         Add one or more functions to the set of exposed functions.
 
@@ -57,13 +59,20 @@ class Expose(object):
         if not funcObjs:
             raise TypeError("expose() takes at least 1 argument (0 given)")
         for fObj in funcObjs:
+            if fObj in self.exposed:
+                continue
             fObj.exposedThrough = getattr(fObj, 'exposedThrough', [])
             fObj.exposedThrough.append(self)
+        self.exposed.extend(funcObjs)
         return funcObjs[0]
 
+    def __getattribute__(self, name: str) -> Any:
+        try:
+            return super().__getattribute__(name)
+        except AttributeError:
+            return self.get(name)
 
-    _nodefault = object()
-    def get(self, instance, methodName, default=_nodefault):
+    def get(self, instance: Any, methodName: str, default: Optional[Any] = None) -> Any:
         """
         Retrieve an exposed method with the given name from the given instance.
 
@@ -81,9 +90,8 @@ class Expose(object):
             return default
         return method
 
-
     @classmethod
-    def _withDocumentation(cls, thunk):
+    def _withDocumentation(cls, thunk: Callable[[Any], Any]) -> Callable[[Any], Any]:
         """
         Slight hack to make users of this class appear to have a docstring to
         documentation generators, by defining them with a decorator.  (This hack
@@ -98,7 +106,7 @@ class Expose(object):
 exposer = Expose._withDocumentation
 
 @exposer
-def renderer():
+def renderer() -> Callable[[Any], Any]:
     """
     Decorate with L{renderer} to use methods as template render directives.
 
@@ -121,8 +129,7 @@ def renderer():
     """
 
 
-
-class Element(object):
+class Element:
     """
     Base for classes which can render part of a page.
 
@@ -133,53 +140,4 @@ class Element(object):
     data which is to be displayed in multiple different contexts.  The Element
     allows the rendering logic to be easily re-used in different ways.
 
-    Element returns render methods which are registered using
-    L{twisted.web.element.renderer}.  For example::
-
-        class Menu(Element):
-            @renderer
-            def items(self, request, tag):
-                ....
-
-    Render methods are invoked with two arguments: first, the
-    L{twisted.web.http.Request} being served and second, the tag object which
-    "invoked" the render method.
-
-    @type loader: L{ITemplateLoader} provider
-    @ivar loader: The factory which will be used to load documents to
-        return from C{render}.
-    """
-    implements(IRenderable)
-    loader = None
-
-    def __init__(self, loader=None):
-        if loader is not None:
-            self.loader = loader
-
-
-    def lookupRenderMethod(self, name):
-        """
-        Look up and return the named render method.
-        """
-        method = renderer.get(self, name, None)
-        if method is None:
-            raise MissingRenderMethod(self, name)
-        return method
-
-
-    def render(self, request):
-        """
-        Implement L{IRenderable} to allow one L{Element} to be embedded in
-        another's template or rendering output.
-
-        (This will simply load the template from the C{loader}; when used in a
-        template, the flattening engine will keep track of this object
-        separately as the object to lookup renderers on and call
-        L{Element.renderer} to look them up.  The resulting object from this
-        method is not directly associated with this L{Element}.)
-        """
-        loader = self.loader
-        if loader is None:
-            raise MissingTemplateLoader(self)
-        return loader.load()
-
+    Element returns render methods which are
